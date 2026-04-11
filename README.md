@@ -1,5 +1,11 @@
 # OpenRocky Android
 
+[![Website](https://img.shields.io/badge/Website-openrocky.org-blue)](https://openrocky.org/)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/SvvsaDA4nE)
+[![Telegram](https://img.shields.io/badge/Telegram-@openrocky-26A5E4?logo=telegram&logoColor=white)](https://t.me/openrocky)
+[![License](https://img.shields.io/badge/License-Apache%202.0-yellowgreen)](LICENSE)
+[![Android Testing](https://img.shields.io/badge/Android-Internal%20Testing-3DDC84?logo=android&logoColor=white)](https://play.google.com/apps/testing/com.xnu.rocky)
+
 > English | [中文](README_zh.md)
 
 **Rocky** is the app — the voice-first AI Agent you install and use on Android. **OpenRocky** is the open-source project behind it (the repo, the codebase, the community).
@@ -7,6 +13,16 @@
 Rocky is not a mobile chat wrapper. It organizes voice interaction, task execution, system bridging, and result review into a native Android agent experience.
 
 > **Naming convention:** The app on your phone is called **Rocky**. The open-source project, repository, and code identifiers use the **OpenRocky** prefix.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="screenshots/screenshot_android1.png" width="240" alt="Weather query"></td>
+    <td><img src="screenshots/screenshot_android2.png" width="240" alt="Capabilities"></td>
+    <td><img src="screenshots/screenshot_android3.png" width="240" alt="Settings"></td>
+  </tr>
+</table>
 
 ## Highlights
 

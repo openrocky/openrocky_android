@@ -1,5 +1,11 @@
 # OpenRocky Android
 
+[![Website](https://img.shields.io/badge/Website-openrocky.org-blue)](https://openrocky.org/)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/SvvsaDA4nE)
+[![Telegram](https://img.shields.io/badge/Telegram-@openrocky-26A5E4?logo=telegram&logoColor=white)](https://t.me/openrocky)
+[![License](https://img.shields.io/badge/License-Apache%202.0-yellowgreen)](LICENSE)
+[![Android Testing](https://img.shields.io/badge/Android-Internal%20Testing-3DDC84?logo=android&logoColor=white)](https://play.google.com/apps/testing/com.xnu.rocky)
+
 > [English](README.md) | 中文
 
 **Rocky** 是用户安装使用的 App — 一款语音优先的 Android AI Agent 应用。**OpenRocky** 是其背后的开源项目（仓库、代码库、社区）。
@@ -7,6 +13,16 @@
 Rocky 不是一个移动端聊天壳子。它将语音交互、任务执行、系统桥接和结果回顾组织成一个原生的 Android Agent 体验。
 
 > **命名约定：** 手机上的应用叫 **Rocky**，开源项目、仓库和代码标识符使用 **OpenRocky** 前缀。
+
+## 截图
+
+<table>
+  <tr>
+    <td><img src="screenshots/screenshot_android1.png" width="240" alt="天气查询"></td>
+    <td><img src="screenshots/screenshot_android2.png" width="240" alt="能力列表"></td>
+    <td><img src="screenshots/screenshot_android3.png" width="240" alt="设置"></td>
+  </tr>
+</table>
 
 ## 特性
 
