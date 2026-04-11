@@ -129,6 +129,7 @@ store-assets/               # Play Store 素材
 
 - **Telegram：** [@openrocky](https://t.me/openrocky)
 - **Discord：** https://discord.gg/SvvsaDA4nE
+- **作者 X/Twitter：** [@everettjf](https://x.com/everettjf)
 
 ## 反馈
 

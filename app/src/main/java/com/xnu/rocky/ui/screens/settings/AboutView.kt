@@ -74,6 +74,7 @@ fun AboutView(onBack: () -> Unit) {
             item { Text("COMMUNITY", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = OpenRockyPalette.label) }
             item { LinkRow("Telegram", "@openrocky") { openUrl(context, "https://t.me/openrocky") } }
             item { LinkRow("Discord", "Join the community") { openUrl(context, "https://discord.gg/SvvsaDA4nE") } }
+            item { LinkRow("Author", "@everettjf") { openUrl(context, "https://x.com/everettjf") } }
 
             item { Spacer(Modifier.height(8.dp)) }
             item { Text("FEEDBACK", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = OpenRockyPalette.label) }

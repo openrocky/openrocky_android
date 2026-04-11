@@ -129,6 +129,7 @@ Uses JUnit and Espresso for instrumented tests. Tests cover provider inventory, 
 
 - **Telegram:** [@openrocky](https://t.me/openrocky)
 - **Discord:** https://discord.gg/SvvsaDA4nE
+- **Author X/Twitter:** [@everettjf](https://x.com/everettjf)
 
 ## Feedback
 

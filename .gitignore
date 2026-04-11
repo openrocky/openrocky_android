@@ -37,6 +37,7 @@ captures/
 *.keystore
 keystore/
 play-service-account.json
+deploy_test.sh
 
 # Log files
 *.log
