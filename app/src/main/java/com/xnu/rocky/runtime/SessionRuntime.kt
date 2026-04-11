@@ -1,0 +1,312 @@
+//
+// OpenRocky — Voice-first AI Agent
+// https://github.com/openrocky
+//
+// Developed by everettjf with the assistance of Claude Code and Codex.
+// Date: 2026-03-25
+// Copyright (c) 2026 everettjf. All rights reserved.
+//
+
+package com.xnu.rocky.runtime
+
+import android.content.Context
+import com.xnu.rocky.models.*
+import com.xnu.rocky.providers.*
+import com.xnu.rocky.runtime.tools.Toolbox
+import com.xnu.rocky.runtime.voice.RealtimeEvent
+import com.xnu.rocky.runtime.voice.RealtimeVoiceBridge
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.text.SimpleDateFormat
+import java.util.*
+
+private const val TAG = "SessionRuntime"
+
+class SessionRuntime(
+    private val context: Context,
+    private val providerStore: ProviderStore,
+    private val realtimeProviderStore: RealtimeProviderStore,
+    private val characterStore: CharacterStore,
+    private val memoryService: MemoryService,
+    private val usageService: UsageService,
+    private val storageProvider: PersistentStorageProvider,
+    private val toolbox: Toolbox
+) {
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    private val inferenceRuntime = ChatInferenceRuntime(toolbox)
+    private var voiceBridge: RealtimeVoiceBridge? = null
+    private var voiceJob: Job? = null
+
+    private val _session = MutableStateFlow(PreviewSession.liveSeed())
+    val session: StateFlow<OpenRockySession> = _session.asStateFlow()
+
+    private val _isVoiceActive = MutableStateFlow(false)
+    val isVoiceActive: StateFlow<Boolean> = _isVoiceActive.asStateFlow()
+
+    private val _statusText = MutableStateFlow("")
+    val statusText: StateFlow<String> = _statusText.asStateFlow()
+
+    private var currentConversationId: String? = null
+    private val chatHistory = mutableListOf<ChatMessage>()
+
+    fun setConversation(conversationId: String) {
+        currentConversationId = conversationId
+        chatHistory.clear()
+        val messages = storageProvider.loadMessages(conversationId)
+        for (msg in messages) {
+            chatHistory.add(ChatMessage(
+                role = msg.role,
+                content = msg.content,
+                tool_call_id = msg.toolCallId,
+                name = msg.toolName
+            ))
+        }
+    }
+
+    fun sendTextMessage(text: String) {
+        val convId = currentConversationId ?: storageProvider.createConversation().also {
+            currentConversationId = it
+        }
+        LogManager.info("[CHAT] sendTextMessage convId=$convId text='${text.take(50)}'", TAG)
+
+        scope.launch {
+            updateSession {
+                it.copy(
+                    mode = SessionMode.PLANNING,
+                    liveTranscript = text
+                )
+            }
+            addTimeline(TimelineKind.SPEECH, text)
+
+            storageProvider.appendMessage(convId, ConversationMessage(role = "user", content = text))
+            chatHistory.add(ChatMessage(role = "user", content = text))
+            LogManager.info("[CHAT] user message stored, chatHistory.size=${chatHistory.size}", TAG)
+
+            val config = providerStore.activeConfiguration
+            if (config == null) {
+                LogManager.warning("[CHAT] No active provider configured", TAG)
+                updateSession { it.copy(mode = SessionMode.READY, assistantReply = "Please configure a provider first.") }
+                return@launch
+            }
+            LogManager.info("[CHAT] using provider=${config.provider.displayName} model=${config.modelID}", TAG)
+
+            updateSession { it.copy(
+                mode = SessionMode.EXECUTING,
+                provider = ProviderStatus(
+                    name = config.provider.displayName,
+                    model = config.modelID,
+                    isConnected = true
+                )
+            ) }
+
+            val systemPrompt = characterStore.systemPrompt(toolbox.toolDescriptions())
+            val messagesForInference = mutableListOf(
+                ChatMessage(role = "system", content = systemPrompt)
+            ) + chatHistory.toMutableList()
+            LogManager.info("[CHAT] messagesForInference.size=${messagesForInference.size}", TAG)
+
+            val responseBuilder = StringBuilder()
+            var deltaCount = 0
+
+            try {
+                val fullResponse = inferenceRuntime.runInference(
+                    config = config,
+                    messages = messagesForInference.toMutableList(),
+                    tools = toolbox.chatToolDefinitions(),
+                    onDelta = { delta ->
+                        deltaCount++
+                        responseBuilder.append(delta)
+                        if (deltaCount <= 3 || deltaCount % 20 == 0) {
+                            LogManager.info("[CHAT] onDelta #$deltaCount content='${delta.take(30)}' totalLen=${responseBuilder.length}", TAG)
+                        }
+                        updateSession { it.copy(assistantReply = responseBuilder.toString()) }
+                    },
+                    onToolCall = { name, args ->
+                        LogManager.info("[CHAT] onToolCall name=$name args='${args.take(80)}'", TAG)
+                        addTimeline(TimelineKind.TOOL, "$name → executing…")
+                        updatePlan(name, PlanStepState.ACTIVE)
+                        storageProvider.appendMessage(convId, ConversationMessage(
+                            role = "tool_call", content = args, toolName = name
+                        ))
+                    },
+                    onToolResult = { name, result ->
+                        LogManager.info("[CHAT] onToolResult name=$name result='${result.take(80)}'", TAG)
+                        addTimeline(TimelineKind.RESULT, "$name → done")
+                        updatePlan(name, PlanStepState.DONE)
+                        storageProvider.appendMessage(convId, ConversationMessage(
+                            role = "tool_result", content = result, toolName = name
+                        ))
+                    },
+                    onUsage = { usage ->
+                        LogManager.info("[CHAT] onUsage prompt=${usage.promptTokens} completion=${usage.completionTokens} total=${usage.totalTokens}", TAG)
+                        usageService.record(
+                            provider = config.provider.displayName,
+                            model = config.modelID,
+                            category = "chat",
+                            promptTokens = usage.promptTokens,
+                            completionTokens = usage.completionTokens
+                        )
+                    }
+                )
+
+                LogManager.info("[CHAT] inference done, deltaCount=$deltaCount fullResponse.len=${fullResponse.length} response='${fullResponse.take(100)}'", TAG)
+                chatHistory.add(ChatMessage(role = "assistant", content = fullResponse))
+                storageProvider.appendMessage(convId, ConversationMessage(role = "assistant", content = fullResponse))
+                LogManager.info("[CHAT] assistant message stored to convId=$convId, chatHistory.size=${chatHistory.size}", TAG)
+
+                updateSession {
+                    it.copy(
+                        mode = SessionMode.READY,
+                        assistantReply = fullResponse,
+                        liveTranscript = ""
+                    )
+                }
+            } catch (e: Exception) {
+                LogManager.error("[CHAT] inference FAILED: ${e.message}", TAG)
+                LogManager.error("[CHAT] exception: ${e.stackTraceToString().take(500)}", TAG)
+                updateSession {
+                    it.copy(
+                        mode = SessionMode.READY,
+                        assistantReply = "Error: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun startVoiceSession() {
+        LogManager.info("[VOICE] startVoiceSession called", TAG)
+        val config = realtimeProviderStore.activeConfiguration
+        if (config == null) {
+            LogManager.warning("[VOICE] No active realtime provider configured! Please configure a voice provider in Settings.", TAG)
+            return
+        }
+        LogManager.info("[VOICE] using provider=${config.provider.displayName} model=${config.modelID}", TAG)
+        _isVoiceActive.value = true
+        _statusText.value = "Connecting…"
+
+        voiceBridge = RealtimeVoiceBridge(context, config, toolbox, characterStore)
+        voiceJob = scope.launch {
+            try {
+                LogManager.info("[VOICE] starting voice bridge...", TAG)
+                voiceBridge?.start()?.collect { event ->
+                    LogManager.info("[VOICE] event: $event", TAG)
+                    handleVoiceEvent(event)
+                }
+            } catch (e: Exception) {
+                LogManager.error("Voice session error: ${e.message}", "SessionRuntime")
+                _statusText.value = "Error: ${e.message}"
+            } finally {
+                _isVoiceActive.value = false
+            }
+        }
+    }
+
+    fun stopVoiceSession() {
+        voiceJob?.cancel()
+        voiceBridge?.stop()
+        voiceBridge = null
+        _isVoiceActive.value = false
+        _statusText.value = ""
+        updateSession { it.copy(mode = SessionMode.READY) }
+    }
+
+    fun newConversation(): String {
+        val id = storageProvider.createConversation()
+        currentConversationId = id
+        chatHistory.clear()
+        _session.value = PreviewSession.liveSeed()
+        return id
+    }
+
+    // Track current voice message IDs for real-time updates
+    private var currentVoiceUserMsgId: String? = null
+    private var currentVoiceAssistantMsgId: String? = null
+
+    private fun ensureVoiceConversation() {
+        if (currentConversationId == null) {
+            currentConversationId = storageProvider.createConversation()
+        }
+    }
+
+    private fun handleVoiceEvent(event: RealtimeEvent) {
+        when (event) {
+            is RealtimeEvent.Status -> _statusText.value = event.text
+            is RealtimeEvent.SessionReady -> {
+                _statusText.value = "Listening…"
+                updateSession { it.copy(mode = SessionMode.LISTENING) }
+            }
+            is RealtimeEvent.MicrophoneActive -> {}
+            is RealtimeEvent.InputSpeechStarted -> {
+                updateSession { it.copy(mode = SessionMode.LISTENING, liveTranscript = "") }
+                // Reset for new user utterance
+                currentVoiceUserMsgId = null
+                currentVoiceAssistantMsgId = null
+            }
+            is RealtimeEvent.UserTranscriptDelta -> {
+                updateSession { it.copy(liveTranscript = it.liveTranscript + event.text) }
+            }
+            is RealtimeEvent.UserTranscriptFinal -> {
+                updateSession { it.copy(liveTranscript = "") }
+                // Write user message to conversation
+                ensureVoiceConversation()
+                val convId = currentConversationId ?: return
+                storageProvider.appendMessage(convId, ConversationMessage(role = "user", content = event.text))
+            }
+            is RealtimeEvent.AssistantTranscriptDelta -> {
+                updateSession { it.copy(
+                    mode = SessionMode.EXECUTING,
+                    assistantReply = it.assistantReply + event.text
+                ) }
+            }
+            is RealtimeEvent.AssistantTranscriptFinal -> {
+                updateSession { it.copy(
+                    mode = SessionMode.READY,
+                    assistantReply = ""
+                ) }
+                // Write assistant message to conversation
+                ensureVoiceConversation()
+                val convId = currentConversationId ?: return
+                storageProvider.appendMessage(convId, ConversationMessage(role = "assistant", content = event.text))
+            }
+            is RealtimeEvent.ToolCallRequested -> {
+                addTimeline(TimelineKind.TOOL, "${event.name} → executing…")
+                updateSession { it.copy(mode = SessionMode.EXECUTING) }
+            }
+            is RealtimeEvent.Error -> {
+                _statusText.value = "Error: ${event.message}"
+                LogManager.error(event.message, "Voice")
+            }
+            is RealtimeEvent.AssistantAudioChunk -> {}
+        }
+    }
+
+    private fun updateSession(update: (OpenRockySession) -> OpenRockySession) {
+        _session.value = update(_session.value)
+    }
+
+    private fun addTimeline(kind: TimelineKind, text: String) {
+        val entry = TimelineEntry(kind = kind, time = timeFormat.format(Date()), text = text)
+        updateSession { session ->
+            val timeline = (session.timeline + entry).takeLast(8)
+            session.copy(timeline = timeline)
+        }
+    }
+
+    private fun updatePlan(toolName: String, state: PlanStepState) {
+        updateSession { session ->
+            val plan = session.plan.map {
+                if (it.title.contains(toolName, ignoreCase = true)) it.copy(state = state) else it
+            }
+            session.copy(plan = plan)
+        }
+    }
+
+    fun destroy() {
+        stopVoiceSession()
+        scope.cancel()
+    }
+}
