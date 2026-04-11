@@ -85,6 +85,10 @@ See [DEVELOP.md](DEVELOP.md) for build instructions, project structure, and code
 
 - [Report issues](https://github.com/openrocky/openrocky_android/issues/new)
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=openrocky/openrocky_android&type=Date)](https://star-history.com/#openrocky/openrocky_android&Date)
+
 ## License
 
 See [LICENSE](LICENSE) for details.
