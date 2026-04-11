@@ -67,14 +67,17 @@ fun AboutView(onBack: () -> Unit) {
             item { HorizontalDivider(color = OpenRockyPalette.separator) }
 
             item { Text("LINKS", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = OpenRockyPalette.label) }
-            item { LinkRow("GitHub", "Open source repository") }
-            item { LinkRow("Website", "openrocky.dev") }
-            item { LinkRow("Twitter", "@openrocky") }
+            item { LinkRow("Website", "openrocky.org") { openUrl(context, "https://openrocky.org/") } }
+            item { LinkRow("Source Code", "GitHub") { openUrl(context, "https://github.com/openrocky/openrocky_android") } }
 
             item { Spacer(Modifier.height(8.dp)) }
             item { Text("COMMUNITY", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = OpenRockyPalette.label) }
-            item { LinkRow("Discord", "Join the community") }
-            item { LinkRow("Telegram", "Discussion group") }
+            item { LinkRow("Telegram", "@openrocky") { openUrl(context, "https://t.me/openrocky") } }
+            item { LinkRow("Discord", "Join the community") { openUrl(context, "https://discord.gg/SvvsaDA4nE") } }
+
+            item { Spacer(Modifier.height(8.dp)) }
+            item { Text("FEEDBACK", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = OpenRockyPalette.label) }
+            item { LinkRow("Feedback", "Report issues") { openUrl(context, "https://github.com/openrocky/openrocky_android/issues/new") } }
 
             item { Spacer(Modifier.height(16.dp)) }
             item {
@@ -85,8 +88,12 @@ fun AboutView(onBack: () -> Unit) {
 }
 
 @Composable
-private fun LinkRow(title: String, subtitle: String) {
-    Card(shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = OpenRockyPalette.card)) {
+private fun LinkRow(title: String, subtitle: String, onClick: () -> Unit = {}) {
+    Card(
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = OpenRockyPalette.card),
+        onClick = onClick
+    ) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = OpenRockyPalette.text)
@@ -95,4 +102,9 @@ private fun LinkRow(title: String, subtitle: String) {
             Icon(Icons.Default.OpenInNew, null, tint = OpenRockyPalette.label, modifier = Modifier.size(18.dp))
         }
     }
+}
+
+private fun openUrl(context: android.content.Context, url: String) {
+    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+    context.startActivity(intent)
 }

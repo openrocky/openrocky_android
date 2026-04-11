@@ -76,14 +76,14 @@ store-assets/               # Play Store assets
 
 ```bash
 # Debug build
-./gradlew assemblePy311Debug
+./gradlew assembleStandardDebug
 
 # Release build (requires keystore setup)
-./gradlew bundlePy311Release
+./gradlew bundleStandardRelease
 
 # Run tests
-./gradlew testPy311DebugUnitTest
-./gradlew connectedPy311DebugAndroidTest
+./gradlew testStandardDebugUnitTest
+./gradlew connectedStandardDebugAndroidTest
 ```
 
 ## Deploy to Google Play
@@ -114,6 +114,25 @@ This project was developed by [everettjf](https://github.com/everettjf) with the
 ### Testing
 
 Uses JUnit and Espresso for instrumented tests. Tests cover provider inventory, tool registration, skill store, character system, and UI components.
+
+## Links
+
+- **Website:** https://openrocky.org/
+- **iOS open source:** https://github.com/openrocky/openrocky
+- **Android open source:** https://github.com/openrocky/openrocky_android
+
+## Try It
+
+- **Android Internal Testing:** https://play.google.com/apps/testing/com.xnu.rocky
+
+## Community
+
+- **Telegram:** [@openrocky](https://t.me/openrocky)
+- **Discord:** https://discord.gg/SvvsaDA4nE
+
+## Feedback
+
+- [Report issues](https://github.com/openrocky/openrocky_android/issues/new)
 
 ## License
 

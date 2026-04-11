@@ -76,14 +76,14 @@ store-assets/               # Play Store 素材
 
 ```bash
 # Debug 构建
-./gradlew assemblePy311Debug
+./gradlew assembleStandardDebug
 
 # Release 构建（需要先配置签名）
-./gradlew bundlePy311Release
+./gradlew bundleStandardRelease
 
 # 运行测试
-./gradlew testPy311DebugUnitTest
-./gradlew connectedPy311DebugAndroidTest
+./gradlew testStandardDebugUnitTest
+./gradlew connectedStandardDebugAndroidTest
 ```
 
 ## 部署到 Google Play
@@ -114,6 +114,25 @@ store-assets/               # Play Store 素材
 ### 测试
 
 使用 JUnit 和 Espresso 进行集成测试。测试覆盖服务商清单、工具注册、技能存储、角色系统和 UI 组件。
+
+## 链接
+
+- **官网：** https://openrocky.org/
+- **iOS 开源：** https://github.com/openrocky/openrocky
+- **Android 开源：** https://github.com/openrocky/openrocky_android
+
+## 体验
+
+- **Android 内测：** https://play.google.com/apps/testing/com.xnu.rocky
+
+## 社区
+
+- **Telegram：** [@openrocky](https://t.me/openrocky)
+- **Discord：** https://discord.gg/SvvsaDA4nE
+
+## 反馈
+
+- [提交问题](https://github.com/openrocky/openrocky_android/issues/new)
 
 ## 许可证
 
