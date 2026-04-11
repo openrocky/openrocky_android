@@ -22,7 +22,7 @@ KEYSTORE_DIR="keystore"
 KEYSTORE_FILE="$KEYSTORE_DIR/openrocky-release.jks"
 KEYSTORE_PROPS="$KEYSTORE_DIR/keystore.properties"
 PLAY_KEY_FILE="$KEYSTORE_DIR/play-service-account.json"
-AAB_OUTPUT="app/build/outputs/bundle/release/app-release.aab"
+AAB_OUTPUT="app/build/outputs/bundle/standardRelease/rocky-standard-release.aab"
 TRACK="internal"  # default track
 
 # ─── Parse args ───────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ fi
 
 # ─── Build release AAB ────────────────────────────────────────────────
 info "Building release AAB…"
-./gradlew bundleRelease \
+./gradlew bundleStandardRelease \
     -PKEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" \
     -PKEY_ALIAS="$KEY_ALIAS" \
     -PKEY_PASSWORD="$KEY_PASSWORD" \
