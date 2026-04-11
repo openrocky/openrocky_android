@@ -10,7 +10,7 @@
 
 > English | [中文](README_zh.md)
 
-Rocky organizes voice interaction, task execution, system bridging, and result review into a native Android agent experience. **Rocky** is the app you install; **OpenRocky** is the open-source project behind it.
+Rocky organizes voice interaction, task execution, system bridging, and result review into a native Android agent experience. 
 
 ## Screenshots
 

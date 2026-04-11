@@ -10,7 +10,7 @@
 
 > [English](README.md) | 中文
 
-Rocky 将语音交互、任务执行、系统桥接和结果回顾组织成一个原生的 Android Agent 体验。**Rocky** 是你安装的 App，**OpenRocky** 是其背后的开源项目。
+Rocky 将语音交互、任务执行、系统桥接和结果回顾组织成一个原生的 Android Agent 体验。
 
 ## 截图
 
