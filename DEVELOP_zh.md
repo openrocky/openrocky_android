@@ -2,8 +2,6 @@
 
 > [English](DEVELOP.md) | 中文
 
-本项目由 [everettjf](https://github.com/everettjf) 在 [Claude Code](https://claude.ai/code) 和 [Codex](https://openai.com/codex) 的协助下开发。
-
 ## 项目结构
 
 ```

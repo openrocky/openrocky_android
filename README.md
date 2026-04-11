@@ -1,18 +1,16 @@
 # OpenRocky Android
 
+**Voice-first AI Agent for Android — not a chat wrapper.**
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-yellowgreen)](LICENSE)
+[![Android](https://img.shields.io/badge/Android-Internal%20Testing-3DDC84?logo=android&logoColor=white)](https://play.google.com/apps/testing/com.xnu.rocky)
 [![Website](https://img.shields.io/badge/Website-openrocky.org-blue)](https://openrocky.org/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/SvvsaDA4nE)
 [![Telegram](https://img.shields.io/badge/Telegram-@openrocky-26A5E4?logo=telegram&logoColor=white)](https://t.me/openrocky)
-[![License](https://img.shields.io/badge/License-Apache%202.0-yellowgreen)](LICENSE)
-[![Android Testing](https://img.shields.io/badge/Android-Internal%20Testing-3DDC84?logo=android&logoColor=white)](https://play.google.com/apps/testing/com.xnu.rocky)
 
 > English | [中文](README_zh.md)
 
-**Rocky** is the app — the voice-first AI Agent you install and use on Android. **OpenRocky** is the open-source project behind it (the repo, the codebase, the community).
-
-Rocky is not a mobile chat wrapper. It organizes voice interaction, task execution, system bridging, and result review into a native Android agent experience.
-
-> **Naming convention:** The app on your phone is called **Rocky**. The open-source project, repository, and code identifiers use the **OpenRocky** prefix.
+Rocky organizes voice interaction, task execution, system bridging, and result review into a native Android agent experience. **Rocky** is the app you install; **OpenRocky** is the open-source project behind it.
 
 ## Screenshots
 
@@ -24,71 +22,65 @@ Rocky is not a mobile chat wrapper. It organizes voice interaction, task executi
   </tr>
 </table>
 
-## Highlights
+## Features
 
 - **Voice-first** — voice is the primary interface, not a chat list
 - **30+ native Android tools** — contacts, calendar, weather, location, reminders, alarms, camera, browser, crypto, and more
-- **Multi-provider AI** — supports OpenAI, Anthropic, Gemini, Azure, Groq, xAI, OpenRouter, DeepSeek, Doubao, aiProxy
-- **Realtime voice** — live voice sessions via OpenAI, Gemini, and Doubao realtime APIs
+- **Multi-provider AI** — OpenAI, Anthropic, Gemini, Azure, Groq, xAI, OpenRouter, DeepSeek, Doubao, aiProxy
+- **Realtime voice** — live sessions via OpenAI, Gemini, and Doubao realtime APIs
 - **Custom skills** — built-in skills plus user-importable custom skills
-- **Local execution** — controlled shell and Python 3.11 runtime on-device via Chaquopy
+- **Local execution** — on-device shell and Python 3.11 runtime via Chaquopy
 - **Characters & Souls** — configurable AI personality and voice
+- **Memory** — persistent context across sessions
 
 ## Architecture
 
 ```
-User Voice → Voice Engine → AI Provider → ROS Runtime → Execution Layer → Results → UI + Voice
+Voice Input → Voice Engine → AI Provider → ROS Runtime → Execution Layer → Results → UI + Voice
 ```
 
-### ROS (Rocky OS) Runtime
+Rocky is built around the **ROS (Rocky OS) Runtime**, which manages sessions, tools, skills, voice bridges, characters, and memory. Execution happens across three layers:
 
-The central execution core that organizes:
+| Layer | Description |
+|---|---|
+| **Android Native Bridge** | Kotlin code calling system APIs (contacts, calendar, location, etc.) |
+| **AI Tool Layer** | Actions dispatched through provider APIs |
+| **Local Execution** | Sandboxed shell/Python runtime via Chaquopy |
 
-- **Sessions** — conversation and task contexts with state management
-- **Tools** — 30+ Android native services registered in `Toolbox`
-- **Skills** — built-in and custom importable skills via `CustomSkillStore`
-- **Voice** — realtime voice bridges for OpenAI, Gemini, and Doubao
-- **Characters & Souls** — personality and voice configuration
-- **Memory** — persistent context across sessions
+Providers follow a three-layer abstraction: **Provider** → **Account** → **Model**.
 
-### Three Execution Layers
+## Quick Start
 
-1. **Android Native Bridge** — Kotlin code calling system APIs (contacts, calendar, location, etc.)
-2. **AI Tool Layer** — actions dispatched through provider APIs
-3. **Local Execution** — controlled shell/Python in sandbox via Chaquopy
+```bash
+git clone https://github.com/openrocky/openrocky_android.git
+cd openrocky_android
+./gradlew assembleStandardDebug
+```
 
-### Provider Architecture
+For full build instructions, project structure, and code style, see the **[Development Guide](DEVELOP.md)**.
 
-Three-layer abstraction: **Provider** → **Account** → **Model**. Configured in `app/src/main/java/.../providers/`.
+## Contributing
 
-## Development
+Contributions are welcome! Please feel free to submit a [Pull Request](https://github.com/openrocky/openrocky_android/pulls).
 
-See [DEVELOP.md](DEVELOP.md) for build instructions, project structure, and code style.
-
-## Links
-
-- **Website:** https://openrocky.org/
-- **iOS open source:** https://github.com/openrocky/openrocky
-- **Android open source:** https://github.com/openrocky/openrocky_android
-
-## Try It
-
-- **Android Internal Testing:** https://play.google.com/apps/testing/com.xnu.rocky
+- [Report a bug](https://github.com/openrocky/openrocky_android/issues/new)
+- [Request a feature](https://github.com/openrocky/openrocky_android/issues/new)
 
 ## Community
 
-- **Telegram:** [@openrocky](https://t.me/openrocky)
-- **Discord:** https://discord.gg/SvvsaDA4nE
-- **Author X/Twitter:** [@everettjf](https://x.com/everettjf)
-
-## Feedback
-
-- [Report issues](https://github.com/openrocky/openrocky_android/issues/new)
+- [Website](https://openrocky.org/) — project homepage
+- [Discord](https://discord.gg/SvvsaDA4nE) — chat with the community
+- [Telegram](https://t.me/openrocky) — @openrocky
+- [iOS version](https://github.com/openrocky/openrocky) — OpenRocky for iOS
 
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=openrocky/openrocky_android&type=Date)](https://star-history.com/#openrocky/openrocky_android&Date)
 
+## Acknowledgments
+
+Built by [@everettjf](https://github.com/everettjf) with [Claude Code](https://claude.ai/code) and [Codex](https://openai.com/codex).
+
 ## License
 
-See [LICENSE](LICENSE) for details.
+[Apache License 2.0](LICENSE)

@@ -2,8 +2,6 @@
 
 > English | [中文](DEVELOP_zh.md)
 
-This project was developed by [everettjf](https://github.com/everettjf) with the assistance of [Claude Code](https://claude.ai/code) and [Codex](https://openai.com/codex).
-
 ## Project Structure
 
 ```
