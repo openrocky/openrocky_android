@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.chaquopy)
 }
 
+base.archivesName = "rocky"
+
 android {
     namespace = "com.xnu.rocky"
     compileSdk = 35
@@ -25,7 +27,7 @@ android {
 
     flavorDimensions += "pyVersion"
     productFlavors {
-        create("py311") {
+        create("standard") {
             dimension = "pyVersion"
         }
     }
@@ -75,7 +77,7 @@ chaquopy {
         }
     }
     productFlavors {
-        getByName("py311") {
+        getByName("standard") {
             version = "3.11"
         }
     }
