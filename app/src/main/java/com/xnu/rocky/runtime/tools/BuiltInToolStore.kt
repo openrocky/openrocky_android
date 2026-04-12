@@ -57,6 +57,7 @@ class BuiltInToolStore(private val context: Context) {
         // System
         ToolInfo("crypto", "Cryptographic operations", "System"),
         ToolInfo("oauth-authenticate", "OAuth authentication flow", "System"),
+        ToolInfo("delegate-task", "Delegate complex tasks to background subagents", "System"),
         ToolInfo("email-send", "Compose and send email", "System"),
         ToolInfo("app-exit", "Exit the application", "System"),
     )

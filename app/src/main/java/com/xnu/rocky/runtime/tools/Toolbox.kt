@@ -10,16 +10,22 @@
 package com.xnu.rocky.runtime.tools
 
 import android.content.Context
+import com.xnu.rocky.providers.ProviderConfiguration
 import com.xnu.rocky.providers.ToolDefinition
 import com.xnu.rocky.providers.ToolFunctionDef
 import com.xnu.rocky.runtime.LogManager
 import com.xnu.rocky.runtime.MemoryService
+import com.xnu.rocky.runtime.SubagentRuntime
+import com.xnu.rocky.runtime.SubagentTask
 import kotlinx.serialization.json.*
 
 class Toolbox(
     private val context: Context,
     private val memoryService: MemoryService
 ) {
+    var subagentChatConfiguration: ProviderConfiguration? = null
+    var subagentStatusHandler: ((String) -> Unit)? = null
+
     private val weatherService = WeatherService()
     private val locationService = LocationService(context)
     private val todoService = TodoService(context)
@@ -42,6 +48,13 @@ class Toolbox(
 
     fun realtimeToolDefinitions(): List<ToolDefinition> {
         return chatToolDefinitions()
+    }
+
+    fun subagentToolDefinitions(allowedTools: Set<String>? = null): List<ToolDefinition> {
+        val enabled = allToolDefinitions().filter { builtInToolStore.isEnabled(it.function.name) }
+        val nonRecursive = enabled.filter { it.function.name != "delegate-task" }
+        if (allowedTools.isNullOrEmpty()) return nonRecursive
+        return nonRecursive.filter { allowedTools.contains(it.function.name) }
     }
 
     fun toolDescriptions(): String {
@@ -182,6 +195,7 @@ class Toolbox(
                     val authUrl = args["url"]?.jsonPrimitive?.contentOrNull ?: ""
                     OAuthService.authenticate(context, authUrl)
                 }
+                "delegate-task" -> executeDelegateTask(args)
                 "app-exit" -> {
                     android.os.Process.killProcess(android.os.Process.myPid())
                     "Exiting app"
@@ -200,6 +214,48 @@ class Toolbox(
             LogManager.error("Tool execution failed: $name - ${e.message}", "Toolbox")
             "Error executing $name: ${e.message}"
         }
+    }
+
+    private suspend fun executeDelegateTask(args: JsonObject): String {
+        val config = subagentChatConfiguration ?: return """{"status":"error","message":"Missing subagent chat configuration"}"""
+        val task = args["task"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+        if (task.isBlank()) return """{"status":"error","message":"Missing required field: task"}"""
+        val contextText = args["context"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val subtasks = args["subtasks"]?.jsonArray?.mapNotNull { item ->
+            val obj = item.jsonObject
+            val description = obj["description"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
+            if (description.isBlank()) return@mapNotNull null
+            val tools = obj["tools"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toSet()
+            SubagentTask(description = description, allowedTools = tools)
+        }.orEmpty()
+
+        val runtime = SubagentRuntime(
+            toolbox = this,
+            configuration = config.normalized(),
+            timeoutMillis = 60_000L,
+            onStatusUpdate = subagentStatusHandler
+        )
+        val result = runtime.execute(task, subtasks, contextText)
+
+        return buildJsonObject {
+            put("status", JsonPrimitive("completed"))
+            put("taskDescription", JsonPrimitive(result.taskDescription))
+            put("subtaskCount", JsonPrimitive(result.results.size))
+            put("totalElapsedSeconds", JsonPrimitive(result.totalElapsedSeconds))
+            putJsonArray("results") {
+                result.results.forEach { sub ->
+                    addJsonObject {
+                        put("summary", JsonPrimitive(sub.summary))
+                        put("details", JsonPrimitive(sub.details))
+                        put("succeeded", JsonPrimitive(sub.succeeded))
+                        put("elapsedSeconds", JsonPrimitive(sub.elapsedSeconds))
+                        putJsonArray("toolsUsed") {
+                            sub.toolsUsed.forEach { add(JsonPrimitive(it)) }
+                        }
+                    }
+                }
+            }
+        }.toString()
     }
 
     private fun allToolDefinitions(): List<ToolDefinition> = listOf(
@@ -501,6 +557,41 @@ class Toolbox(
                     putJsonObject("url") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("OAuth authorization URL")) }
                 }
                 putJsonArray("required") { add(JsonPrimitive("url")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "delegate-task",
+            description = "Delegate a complex multi-step task to background agent(s) that can use tools in parallel. Use for deep analysis and multi-source tasks; avoid for simple one-step tasks.",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("task") {
+                        put("type", JsonPrimitive("string"))
+                        put("description", JsonPrimitive("Detailed overall task description"))
+                    }
+                    putJsonObject("subtasks") {
+                        put("type", JsonPrimitive("array"))
+                        put("description", JsonPrimitive("Optional parallel subtasks"))
+                        putJsonObject("items") {
+                            put("type", JsonPrimitive("object"))
+                            putJsonObject("properties") {
+                                putJsonObject("description") {
+                                    put("type", JsonPrimitive("string"))
+                                }
+                                putJsonObject("tools") {
+                                    put("type", JsonPrimitive("array"))
+                                    putJsonObject("items") { put("type", JsonPrimitive("string")) }
+                                }
+                            }
+                            putJsonArray("required") { add(JsonPrimitive("description")) }
+                        }
+                    }
+                    putJsonObject("context") {
+                        put("type", JsonPrimitive("string"))
+                        put("description", JsonPrimitive("Relevant context for subagent execution"))
+                    }
+                }
+                putJsonArray("required") { add(JsonPrimitive("task")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(

@@ -59,8 +59,9 @@ object OpenAIOAuthService {
     private const val TOKEN_URL = "https://auth.openai.com/oauth/token"
     private const val REDIRECT_HOST = "127.0.0.1"
     private const val REDIRECT_PORT = 1455
-    private const val REDIRECT_URI = "http://127.0.0.1:1455/auth/callback"
-    private const val SCOPE = "openid profile email offline_access"
+    private const val REDIRECT_URI = "http://localhost:1455/auth/callback"
+    private const val CALLBACK_BASE_URI = "http://localhost:1455"
+    private const val SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke"
     private const val JWT_AUTH_CLAIM_PATH = "https://api.openai.com/auth"
     private val json = Json { ignoreUnknownKeys = true }
     private val secureRandom = SecureRandom()
@@ -192,7 +193,7 @@ object OpenAIOAuthService {
 
                 val firstLine = reader.readLine().orEmpty()
                 val target = firstLine.split(" ").getOrNull(1).orEmpty()
-                val callbackURL = "http://$REDIRECT_HOST:$REDIRECT_PORT$target"
+                val callbackURL = "$CALLBACK_BASE_URI$target"
 
                 writer.write(
                     "HTTP/1.1 200 OK\r\n" +

@@ -52,6 +52,12 @@ class SessionRuntime(
     private var currentConversationId: String? = null
     private val chatHistory = mutableListOf<ChatMessage>()
 
+    init {
+        toolbox.subagentStatusHandler = { text ->
+            scope.launch(Dispatchers.Main) { _statusText.value = text }
+        }
+    }
+
     fun setConversation(conversationId: String) {
         currentConversationId = conversationId
         chatHistory.clear()
@@ -92,6 +98,7 @@ class SessionRuntime(
                 return@launch
             }
             LogManager.info("[CHAT] using provider=${config.provider.displayName} model=${config.modelID}", TAG)
+            toolbox.subagentChatConfiguration = config.normalized()
 
             updateSession { it.copy(
                 mode = SessionMode.EXECUTING,

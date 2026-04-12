@@ -91,6 +91,10 @@ class CharacterStore(private val context: Context) {
                 appendLine()
                 appendLine("## Available Tools")
                 appendLine(toolDescriptions)
+                if (toolDescriptions.contains("delegate-task")) {
+                    appendLine()
+                    appendLine("When a task is complex or multi-step, prefer using `delegate-task` to run focused background subtasks in parallel. For simple single-tool tasks, call the tool directly.")
+                }
             }
         }
     }
