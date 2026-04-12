@@ -162,6 +162,7 @@ object OpenAIOAuthService {
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("client_id", CLIENT_ID)
             .appendQueryParameter("redirect_uri", REDIRECT_URI)
+            .appendQueryParameter("audience", "https://api.openai.com/v1")
             .appendQueryParameter("scope", SCOPE)
             .appendQueryParameter("code_challenge", challenge)
             .appendQueryParameter("code_challenge_method", "S256")

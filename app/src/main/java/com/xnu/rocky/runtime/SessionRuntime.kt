@@ -56,6 +56,7 @@ class SessionRuntime(
         toolbox.subagentStatusHandler = { text ->
             scope.launch(Dispatchers.Main) { _statusText.value = text }
         }
+        syncSubagentChatConfiguration()
     }
 
     fun setConversation(conversationId: String) {
@@ -98,7 +99,7 @@ class SessionRuntime(
                 return@launch
             }
             LogManager.info("[CHAT] using provider=${config.provider.displayName} model=${config.modelID}", TAG)
-            toolbox.subagentChatConfiguration = config.normalized()
+            syncSubagentChatConfiguration()
 
             updateSession { it.copy(
                 mode = SessionMode.EXECUTING,
@@ -192,6 +193,7 @@ class SessionRuntime(
             return
         }
         LogManager.info("[VOICE] using provider=${config.provider.displayName} model=${config.modelID}", TAG)
+        syncSubagentChatConfiguration()
         _isVoiceActive.value = true
         _statusText.value = "Connecting…"
 
@@ -227,6 +229,10 @@ class SessionRuntime(
         chatHistory.clear()
         _session.value = PreviewSession.liveSeed()
         return id
+    }
+
+    private fun syncSubagentChatConfiguration() {
+        toolbox.subagentChatConfiguration = providerStore.activeConfiguration?.normalized()
     }
 
     // Track current voice message IDs for real-time updates
