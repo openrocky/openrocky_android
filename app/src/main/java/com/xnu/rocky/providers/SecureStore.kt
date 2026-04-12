@@ -41,4 +41,9 @@ object SecureStore {
     fun delete(key: String) {
         prefs?.edit()?.remove(key)?.apply()
     }
+
+    fun keysWithPrefix(prefix: String): Set<String> {
+        val all = prefs?.all?.keys ?: return emptySet()
+        return all.filter { it.startsWith(prefix) }.toSet()
+    }
 }

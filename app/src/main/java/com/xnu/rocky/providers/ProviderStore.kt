@@ -10,6 +10,7 @@
 package com.xnu.rocky.providers
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +19,9 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 class ProviderStore(private val context: Context) {
+    private companion object {
+        const val TAG = "ProviderStore"
+    }
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val dir: File get() = File(context.filesDir, "OpenRockyProviders").also { it.mkdirs() }
     private val manifestFile: File get() = File(dir, "manifest.json")
@@ -30,6 +34,7 @@ class ProviderStore(private val context: Context) {
 
     init {
         load()
+        cleanupOrphanOpenAIOAuthVault()
     }
 
     val activeInstance: ProviderInstance?
@@ -38,7 +43,18 @@ class ProviderStore(private val context: Context) {
     val activeConfiguration: ProviderConfiguration?
         get() {
             val instance = activeInstance ?: return null
-            val credential = SecureStore.get(instance.credentialKeychainKey) ?: return null
+            val manualCredential = SecureStore.get(instance.credentialKeychainKey).orEmpty()
+            val oauthCredential = openAIOAuthCredential(instance)
+            val credential = if (
+                instance.kind == ProviderKind.OPENAI &&
+                manualCredential.isBlank() &&
+                oauthCredential != null
+            ) {
+                oauthCredential.accessToken
+            } else {
+                manualCredential
+            }
+            if (credential.isBlank()) return null
             return instance.toConfiguration(credential)
         }
 
@@ -63,16 +79,36 @@ class ProviderStore(private val context: Context) {
 
     fun delete(id: String) {
         SecureStore.delete("provider_credential_$id")
+        SecureStore.delete(openAIOAuthKeychainKey(id))
         File(dir, "$id.json").delete()
         _instances.value = _instances.value.filter { it.id != id }
         if (_activeInstanceID.value == id) {
             _activeInstanceID.value = _instances.value.firstOrNull()?.id
         }
+        cleanupOrphanOpenAIOAuthVault()
         saveManifest()
     }
 
     fun credentialFor(instance: ProviderInstance): String {
         return SecureStore.get(instance.credentialKeychainKey) ?: ""
+    }
+
+    fun openAIOAuthCredential(instance: ProviderInstance): OpenAIOAuthCredential? {
+        val raw = SecureStore.get(openAIOAuthKeychainKey(instance.id)) ?: return null
+        return runCatching { json.decodeFromString<OpenAIOAuthCredential>(raw) }.getOrNull()
+    }
+
+    fun setOpenAIOAuthCredential(credential: OpenAIOAuthCredential?, instanceID: String) {
+        val key = openAIOAuthKeychainKey(instanceID)
+        if (credential == null) {
+            SecureStore.delete(key)
+            cleanupOrphanOpenAIOAuthVault()
+            return
+        }
+        val raw = runCatching { json.encodeToString(credential) }.getOrNull() ?: return
+        SecureStore.set(key, raw)
+        OpenAIOAuthVault.save(credential)
+        cleanupOrphanOpenAIOAuthVault()
     }
 
     private fun load() {
@@ -95,6 +131,25 @@ class ProviderStore(private val context: Context) {
     private fun saveManifest() {
         val data = ManifestData(activeInstanceID = _activeInstanceID.value)
         manifestFile.writeText(json.encodeToString(data))
+    }
+
+    private fun openAIOAuthKeychainKey(instanceID: String): String {
+        return "rocky.provider-instance.$instanceID.openai-oauth"
+    }
+
+    private fun cleanupOrphanOpenAIOAuthVault() {
+        val referencedAccounts = _instances.value.mapNotNull { instance ->
+            openAIOAuthCredential(instance)?.accountID
+        }.toSet()
+        val prefix = "rocky.openai-oauth.account."
+        val vaultKeys = SecureStore.keysWithPrefix(prefix)
+        vaultKeys.forEach { key ->
+            val accountID = key.removePrefix(prefix)
+            if (accountID.isNotBlank() && !referencedAccounts.contains(accountID)) {
+                OpenAIOAuthVault.remove(accountID)
+                Log.i(TAG, "Removed orphan OpenAI OAuth vault entry for account=$accountID")
+            }
+        }
     }
 
     @kotlinx.serialization.Serializable

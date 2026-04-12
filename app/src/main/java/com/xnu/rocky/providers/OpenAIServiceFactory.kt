@@ -9,11 +9,13 @@
 
 package com.xnu.rocky.providers
 
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 object OpenAIServiceFactory {
     fun createClient(config: ProviderConfiguration): OkHttpClient {
+        val normalized = config.normalized()
         return OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
@@ -21,29 +23,30 @@ object OpenAIServiceFactory {
             .addInterceptor { chain ->
                 val original = chain.request()
                 val builder = original.newBuilder()
+                val resolvedCredential = resolveCredentialForRequest(normalized)
 
-                when (config.provider) {
+                when (normalized.provider) {
                     ProviderKind.AZURE_OPENAI -> {
-                        builder.header("api-key", config.credential)
+                        builder.header("api-key", resolvedCredential)
                         builder.header("Content-Type", "application/json")
                     }
                     ProviderKind.ANTHROPIC -> {
-                        builder.header("x-api-key", config.credential)
+                        builder.header("x-api-key", resolvedCredential)
                         builder.header("anthropic-version", "2023-06-01")
                         builder.header("Content-Type", "application/json")
                     }
                     ProviderKind.OPENROUTER -> {
-                        builder.header("Authorization", "Bearer ${config.credential}")
+                        builder.header("Authorization", "Bearer $resolvedCredential")
                         builder.header("Content-Type", "application/json")
-                        if (config.openRouterReferer.isNotBlank()) {
-                            builder.header("HTTP-Referer", config.openRouterReferer)
+                        if (normalized.openRouterReferer.isNotBlank()) {
+                            builder.header("HTTP-Referer", normalized.openRouterReferer)
                         }
-                        if (config.openRouterTitle.isNotBlank()) {
-                            builder.header("X-Title", config.openRouterTitle)
+                        if (normalized.openRouterTitle.isNotBlank()) {
+                            builder.header("X-Title", normalized.openRouterTitle)
                         }
                     }
                     else -> {
-                        builder.header("Authorization", "Bearer ${config.credential}")
+                        builder.header("Authorization", "Bearer $resolvedCredential")
                         builder.header("Content-Type", "application/json")
                     }
                 }
@@ -53,32 +56,44 @@ object OpenAIServiceFactory {
             .build()
     }
 
+    private fun resolveCredentialForRequest(config: ProviderConfiguration): String {
+        if (config.provider != ProviderKind.OPENAI) {
+            return config.credential
+        }
+        return try {
+            runBlocking { OpenAIOAuthVault.resolvedAccessToken(config.credential) }
+        } catch (_: Exception) {
+            config.credential
+        }
+    }
+
     fun chatCompletionUrl(config: ProviderConfiguration): String {
+        val normalized = config.normalized()
         // If custom host is set, use it directly as base URL
-        if (config.customHost.isNotBlank()) {
-            val base = config.customHost.trimEnd('/')
-            return when (config.provider) {
+        if (normalized.customHost.isNotBlank()) {
+            val base = normalized.customHost.trimEnd('/')
+            return when (normalized.provider) {
                 ProviderKind.ANTHROPIC -> "$base/messages"
-                ProviderKind.GEMINI -> "$base/models/${config.modelID}:streamGenerateContent?key=${config.credential}"
+                ProviderKind.GEMINI -> "$base/models/${normalized.modelID}:streamGenerateContent?key=${normalized.credential}"
                 else -> "$base/chat/completions"
             }
         }
 
-        return when (config.provider) {
+        return when (normalized.provider) {
             ProviderKind.AZURE_OPENAI -> {
-                "https://${config.azureResourceName}.openai.azure.com/openai/deployments/${config.modelID}/chat/completions?api-version=${config.azureAPIVersion}"
+                "https://${normalized.azureResourceName}.openai.azure.com/openai/deployments/${normalized.modelID}/chat/completions?api-version=${normalized.azureAPIVersion}"
             }
             ProviderKind.ANTHROPIC -> {
-                "${config.provider.baseUrl}messages"
+                "${normalized.provider.baseUrl}messages"
             }
             ProviderKind.GEMINI -> {
-                "${config.provider.baseUrl}models/${config.modelID}:streamGenerateContent?key=${config.credential}"
+                "${normalized.provider.baseUrl}models/${normalized.modelID}:streamGenerateContent?key=${normalized.credential}"
             }
             ProviderKind.AIPROXY -> {
-                "${config.aiProxyServiceURL}/v1/chat/completions"
+                "${normalized.aiProxyServiceURL}/v1/chat/completions"
             }
             else -> {
-                "${config.provider.baseUrl}chat/completions"
+                "${normalized.provider.baseUrl}chat/completions"
             }
         }
     }

@@ -197,14 +197,28 @@ fun OpenRockyMainApp() {
                 val route = entry.toRoute<ProviderInstanceEditorRoute>()
                 val existing = route.instanceId?.let { id -> providerInstances.find { it.id == id } }
                 val credential = existing?.let { viewModel.providerStore.credentialFor(it) } ?: ""
+                val existingOAuthCredential = existing?.let { viewModel.providerStore.openAIOAuthCredential(it) }
 
                 ProviderInstanceEditorView(
                     existingInstance = existing,
                     existingCredential = credential,
-                    onSave = { inst, cred -> viewModel.providerStore.save(inst, cred) },
-                    onTest = { inst, cred, callback ->
+                    existingOpenAIOAuthCredential = existingOAuthCredential,
+                    onSave = { inst, cred, oauthCred ->
+                        viewModel.providerStore.save(inst, cred)
+                        viewModel.providerStore.setOpenAIOAuthCredential(oauthCred, inst.id)
+                    },
+                    onTest = { inst, cred, oauthCred, callback ->
                         scope.launch {
-                            val config = inst.toConfiguration(cred)
+                            val refreshedOAuth = if (oauthCred != null && cred.isBlank()) {
+                                runCatching { com.xnu.rocky.providers.OpenAIOAuthService.refreshIfNeeded(oauthCred) }.getOrElse { oauthCred }
+                            } else {
+                                oauthCred
+                            }
+                            if (existing != null && refreshedOAuth != null && refreshedOAuth != oauthCred) {
+                                viewModel.providerStore.setOpenAIOAuthCredential(refreshedOAuth, existing.id)
+                            }
+                            val resolvedCredential = cred.ifBlank { refreshedOAuth?.accessToken.orEmpty() }
+                            val config = inst.toConfiguration(resolvedCredential)
                             val client = com.xnu.rocky.providers.ChatClient(config)
                             val result = client.testConnection()
                             callback(result.getOrElse { it.message ?: "Connection failed" })
