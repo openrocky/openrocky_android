@@ -127,5 +127,26 @@ Use shell-execute with curl to call the GitHub API. All public repo endpoints ne
 Present each step with a clear heading. Use bullet points. At the end, provide a **Summary** with: what the project does, tech stack, maturity assessment, notable strengths or concerns.""",
             enabled = true
         ),
+        CustomSkill(
+            id = "skill-chat-summarizer",
+            name = "Chat Summarizer",
+            description = "Summarize the current chat session into a well-structured Markdown article for sharing",
+            trigger = "When user asks to summarize the chat, review today's conversation, or generate a recap of the discussion",
+            prompt = """You are a conversation summarizer. Your job is to turn the current chat session into a clean, shareable Markdown article. Follow these rules:
+
+1. Review ALL messages in the current conversation context.
+2. Generate a Markdown article with this structure:
+   - **Title**: a concise headline that captures the main topic(s) discussed.
+   - **Overview**: 1-2 sentences summarizing what was accomplished.
+   - **Key Topics**: use ## headings for each major topic or task discussed. Under each heading, summarize the discussion, decisions made, and outcomes.
+   - **Action Items / Results**: list any deliverables, decisions, or next steps that came out of the conversation.
+   - **Timeline**: note the date of the conversation.
+3. Write in the same language the user used in the conversation (Chinese if they spoke Chinese, English if English, etc.).
+4. Keep it concise but comprehensive — capture the essence without copying messages verbatim.
+5. Use proper Markdown formatting: headings, bullet points, code blocks (if code was discussed), bold for emphasis.
+6. After generating the article, use file-write to save it as a .md file in the workspace with a descriptive filename (e.g. chat-summary-2026-04-11.md).
+7. Tell the user the file has been saved and they can share it.""",
+            enabled = true
+        ),
     )
 }

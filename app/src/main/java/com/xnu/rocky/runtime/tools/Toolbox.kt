@@ -172,6 +172,10 @@ class Toolbox(
                     val url = args["url"]?.jsonPrimitive?.contentOrNull ?: ""
                     browserService.readContent(url)
                 }
+                "browser-cookies" -> {
+                    val domain = args["domain"]?.jsonPrimitive?.contentOrNull ?: ""
+                    browserService.getCookies(domain)
+                }
                 "android-reminder-list" -> {
                     val daysAhead = args["days_ahead"]?.jsonPrimitive?.intOrNull ?: 7
                     reminderService.listReminders(daysAhead)
@@ -495,6 +499,17 @@ class Toolbox(
                     putJsonObject("url") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("URL to read")) }
                 }
                 putJsonArray("required") { add(JsonPrimitive("url")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "browser-cookies",
+            description = "Extract cookies stored for a domain from the WebView cookie store",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("domain") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Domain to get cookies for (e.g. example.com)")) }
+                }
+                putJsonArray("required") { add(JsonPrimitive("domain")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(

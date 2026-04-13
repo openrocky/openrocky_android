@@ -459,14 +459,16 @@ class OpenRockyInstrumentedTest {
 
     @Test
     fun test_30_builtInSkills_allPresent() {
-        assertEquals(10, BuiltInSkills.all.size)
+        assertEquals(12, BuiltInSkills.all.size)
         val names = BuiltInSkills.all.map { it.name }
         assertTrue(names.contains("Translator"))
         assertTrue(names.contains("Summarizer"))
         assertTrue(names.contains("Code Helper"))
         assertTrue(names.contains("Math Solver"))
         assertTrue(names.contains("Travel Planner"))
-        Log.d(TAG, "✓ All 10 built-in skills present")
+        assertTrue(names.contains("GitHub Repo Analyzer"))
+        assertTrue(names.contains("Chat Summarizer"))
+        Log.d(TAG, "✓ All 12 built-in skills present")
     }
 
     @Test

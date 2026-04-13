@@ -12,6 +12,7 @@ package com.xnu.rocky.runtime.tools
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.CookieManager
 import androidx.browser.customtabs.CustomTabsIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,6 +43,32 @@ class BrowserService(private val context: Context) {
             } catch (e2: Exception) {
                 "Failed to open URL: ${e2.message}"
             }
+        }
+    }
+
+    fun getCookies(domain: String): String {
+        return try {
+            val cookieManager = CookieManager.getInstance()
+            val url = if (domain.startsWith("http")) domain else "https://$domain"
+            val cookies = cookieManager.getCookie(url)
+            if (cookies.isNullOrBlank()) {
+                "No cookies found for $domain"
+            } else {
+                val parsed = cookies.split(";").map { it.trim() }.filter { it.isNotBlank() }
+                buildString {
+                    appendLine("Cookies for $domain (${parsed.size} cookies):")
+                    parsed.forEach { cookie ->
+                        val parts = cookie.split("=", limit = 2)
+                        if (parts.size == 2) {
+                            appendLine("  ${parts[0].trim()} = ${parts[1].trim()}")
+                        } else {
+                            appendLine("  $cookie")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            "Failed to get cookies: ${e.message}"
         }
     }
 
