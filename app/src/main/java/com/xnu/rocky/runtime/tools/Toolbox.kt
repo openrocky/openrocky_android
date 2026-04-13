@@ -40,6 +40,7 @@ class Toolbox(
     private val reminderService = ReminderService(context)
     private val mediaService = MediaService(context)
     private val ffmpegService = FFmpegService(context)
+    private val healthService = HealthService(context)
     private val builtInToolStore = BuiltInToolStore(context)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -162,6 +163,17 @@ class Toolbox(
                 "ffmpeg-execute" -> {
                     val command = args["command"]?.jsonPrimitive?.contentOrNull ?: ""
                     ffmpegService.execute(command)
+                }
+                "android-health-summary" -> {
+                    val date = args["date"]?.jsonPrimitive?.contentOrNull
+                    healthService.getSummary(date)
+                }
+                "android-health-metric" -> {
+                    val metric = args["metric"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val startDate = args["start_date"]?.jsonPrimitive?.contentOrNull
+                    val endDate = args["end_date"]?.jsonPrimitive?.contentOrNull
+                    val days = args["days"]?.jsonPrimitive?.intOrNull
+                    healthService.getMetric(metric, startDate, endDate, days)
                 }
                 "nearby-search" -> {
                     val query = args["query"]?.jsonPrimitive?.contentOrNull ?: ""
@@ -469,6 +481,30 @@ class Toolbox(
                     putJsonObject("code") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Python source code to execute. Use print() to produce output.")) }
                 }
                 putJsonArray("required") { add(JsonPrimitive("code")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "android-health-summary",
+            description = "Get a daily health summary including steps, active energy, heart rate, distance, and sleep for a given date. Requires Health Connect app.",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("date") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Date in YYYY-MM-DD format (default: today)")) }
+                }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "android-health-metric",
+            description = "Query a specific health metric from Health Connect for a date range. Supported metrics: steps, heart_rate, active_energy, distance, sleep.",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("metric") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("The health metric: steps, heart_rate, active_energy, distance, or sleep")) }
+                    putJsonObject("start_date") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Start date in YYYY-MM-DD format")) }
+                    putJsonObject("end_date") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("End date in YYYY-MM-DD format")) }
+                    putJsonObject("days") { put("type", JsonPrimitive("integer")); put("description", JsonPrimitive("Number of days to look back (default 7, used if start_date not set)")) }
+                }
+                putJsonArray("required") { add(JsonPrimitive("metric")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(

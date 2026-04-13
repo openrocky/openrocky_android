@@ -55,6 +55,10 @@ class GLMRealtimeVoiceClient(
                 "send_notification" to "notification-schedule",
                 "open_url" to "open-url"
             ),
+            "health" to mapOf(
+                "summary" to "android-health-summary",
+                "metric" to "android-health-metric"
+            ),
             "web_search" to mapOf(
                 "search" to "web-search",
                 "read_page" to "browser-read",
@@ -634,6 +638,21 @@ Voice-specific rules:
                         putJsonObject("body") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Notification body")) }
                         putJsonObject("delay_seconds") { put("type", JsonPrimitive("integer")); put("description", JsonPrimitive("Notification delay in seconds")) }
                         putJsonObject("url") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("URL to open")) }
+                    }
+                    putJsonArray("required") { add(JsonPrimitive("action")) }
+                }
+            }
+            addJsonObject {
+                put("type", JsonPrimitive("function"))
+                put("name", JsonPrimitive("health"))
+                put("description", JsonPrimitive("Health data from Health Connect. Actions: summary (get daily health overview, optional: date in YYYY-MM-DD), metric (get specific metric, needs: metric_name e.g. steps/heart_rate/sleep; optional: days)"))
+                putJsonObject("parameters") {
+                    put("type", JsonPrimitive("object"))
+                    putJsonObject("properties") {
+                        putJsonObject("action") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("One of: summary, metric")) }
+                        putJsonObject("metric_name") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Health metric: steps, heart_rate, active_energy, distance, sleep")) }
+                        putJsonObject("days") { put("type", JsonPrimitive("integer")); put("description", JsonPrimitive("Number of days to look back")) }
+                        putJsonObject("date") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Date in YYYY-MM-DD format")) }
                     }
                     putJsonArray("required") { add(JsonPrimitive("action")) }
                 }

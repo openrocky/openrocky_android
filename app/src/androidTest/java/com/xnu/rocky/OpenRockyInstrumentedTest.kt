@@ -902,6 +902,7 @@ class OpenRockyInstrumentedTest {
             "android-contacts-search", "notification-schedule", "open-url",
             "web-search", "browser-read", "browser-open",
             "file-read", "file-write", "memory_get", "memory_write", "todo",
+            "android-health-summary", "android-health-metric",
             "shell-execute", "python-execute", "ffmpeg-execute",
             "camera-capture", "photo-pick", "file-pick",
             "delegate-task"
@@ -910,7 +911,7 @@ class OpenRockyInstrumentedTest {
         for (tool in expectedTools) {
             assertTrue("Missing tool in consolidation mapping: $tool", allMappedTools.contains(tool))
         }
-        assertEquals(8, com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.consolidatedToolMapping.size)
-        Log.d(TAG, "✓ Consolidated tool mapping covers all ${expectedTools.size} expected tools across 8 categories")
+        assertEquals(9, com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.consolidatedToolMapping.size)
+        Log.d(TAG, "✓ Consolidated tool mapping covers all ${expectedTools.size} expected tools across 9 categories")
     }
 }

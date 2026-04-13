@@ -114,6 +114,7 @@ dependencies {
     implementation(libs.vico.compose.m3)
     implementation(libs.coil.compose)
     implementation("io.getstream:stream-webrtc-android:1.3.10")
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha10")
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.android)
