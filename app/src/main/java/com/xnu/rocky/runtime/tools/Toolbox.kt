@@ -41,6 +41,7 @@ class Toolbox(
     private val mediaService = MediaService(context)
     private val ffmpegService = FFmpegService(context)
     private val healthService = HealthService(context)
+    val mountStore = MountStore(context)
     private val builtInToolStore = BuiltInToolStore(context)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -215,6 +216,28 @@ class Toolbox(
                 "oauth-authenticate" -> {
                     val authUrl = args["url"]?.jsonPrimitive?.contentOrNull ?: ""
                     OAuthService.authenticate(context, authUrl)
+                }
+                "external-list" -> {
+                    val container = args["container"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val path = args["path"]?.jsonPrimitive?.contentOrNull ?: ""
+                    if (path.contains("..") || path.startsWith("/")) return "Invalid path: must be relative, no '..' allowed"
+                    val mount = mountStore.mount(container) ?: return "Mount '$container' not found. Available: ${mountStore.mounts.value.joinToString { it.name }}"
+                    mountStore.listFiles(mount, path)
+                }
+                "external-read" -> {
+                    val container = args["container"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val path = args["path"]?.jsonPrimitive?.contentOrNull ?: ""
+                    if (path.contains("..") || path.startsWith("/")) return "Invalid path: must be relative, no '..' allowed"
+                    val mount = mountStore.mount(container) ?: return "Mount '$container' not found. Available: ${mountStore.mounts.value.joinToString { it.name }}"
+                    mountStore.readFile(mount, path)
+                }
+                "external-write" -> {
+                    val container = args["container"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val path = args["path"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val content = args["content"]?.jsonPrimitive?.contentOrNull ?: ""
+                    if (path.contains("..") || path.startsWith("/")) return "Invalid path: must be relative, no '..' allowed"
+                    val mount = mountStore.mount(container) ?: return "Mount '$container' not found. Available: ${mountStore.mounts.value.joinToString { it.name }}"
+                    mountStore.writeFile(mount, path, content)
                 }
                 "delegate-task" -> executeDelegateTask(args)
                 "app-exit" -> {
@@ -624,6 +647,43 @@ class Toolbox(
                     putJsonObject("url") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("OAuth authorization URL")) }
                 }
                 putJsonArray("required") { add(JsonPrimitive("url")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "external-list",
+            description = "List files and folders in a mounted external folder. Use this to browse user-mounted directories (e.g. Obsidian vault, project folders).",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("container") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Mount name (e.g. 'obsidian', 'notes')")) }
+                    putJsonObject("path") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Relative path within the mount (empty or '/' for root)")) }
+                }
+                putJsonArray("required") { add(JsonPrimitive("container")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "external-read",
+            description = "Read a file from a mounted external folder",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("container") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Mount name")) }
+                    putJsonObject("path") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Relative file path within the mount")) }
+                }
+                putJsonArray("required") { add(JsonPrimitive("container")); add(JsonPrimitive("path")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "external-write",
+            description = "Write content to a file in a mounted external folder (requires read-write mount)",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("container") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Mount name")) }
+                    putJsonObject("path") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Relative file path within the mount")) }
+                    putJsonObject("content") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Text content to write")) }
+                }
+                putJsonArray("required") { add(JsonPrimitive("container")); add(JsonPrimitive("path")); add(JsonPrimitive("content")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(

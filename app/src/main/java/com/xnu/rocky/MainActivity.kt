@@ -179,6 +179,7 @@ fun OpenRockyMainApp() {
                     onEmail = { navController.navigate(EmailSettingsRoute) },
                     onFeatures = { navController.navigate(FeaturesSettingsRoute) },
                     onUsage = { navController.navigate(UsageSettingsRoute) },
+                    onMounts = { navController.navigate(MountSettingsRoute) },
                     onWorkspace = { navController.navigate(WorkspaceFilesRoute) },
                     onLogs = { navController.navigate(LogsRoute) },
                     onDebug = { navController.navigate(DebugPanelRoute) },
@@ -362,6 +363,13 @@ fun OpenRockyMainApp() {
             composable<FeaturesSettingsRoute> { FeaturesSettingsView(onBack = { navController.popBackStack() }) }
             composable<UsageSettingsRoute> { UsageSettingsView(usageService = viewModel.usageService, onBack = { navController.popBackStack() }) }
             composable<AboutRoute> { AboutView(onBack = { navController.popBackStack() }) }
+
+            composable<MountSettingsRoute> {
+                MountSettingsView(
+                    mountStore = viewModel.toolbox.mountStore,
+                    onBack = { navController.popBackStack() }
+                )
+            }
 
             composable<EmailSettingsRoute> {
                 EmailSettingsView(onBack = { navController.popBackStack() })

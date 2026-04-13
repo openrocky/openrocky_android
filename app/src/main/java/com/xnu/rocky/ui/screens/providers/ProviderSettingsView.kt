@@ -42,6 +42,7 @@ fun ProviderSettingsView(
     onEmail: () -> Unit,
     onFeatures: () -> Unit,
     onUsage: () -> Unit,
+    onMounts: () -> Unit,
     onWorkspace: () -> Unit,
     onLogs: () -> Unit,
     onDebug: () -> Unit,
@@ -110,6 +111,9 @@ fun ProviderSettingsView(
             }
             item {
                 SettingsRow(Icons.Default.BarChart, "Usage", "Token usage analytics", OpenRockyPalette.accent, onUsage)
+            }
+            item {
+                SettingsRow(Icons.Default.FolderOpen, "External Folders", "Mount device folders for AI access", OpenRockyPalette.accent, onMounts)
             }
             item {
                 SettingsRow(Icons.Default.Folder, "Workspace", "Browse workspace files", OpenRockyPalette.muted, onWorkspace)

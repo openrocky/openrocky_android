@@ -109,6 +109,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.browser)
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation(libs.markdown.renderer)
     implementation(libs.markdown.renderer.coil3)
     implementation(libs.vico.compose.m3)
