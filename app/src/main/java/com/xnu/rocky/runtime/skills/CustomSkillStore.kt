@@ -18,10 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.*
 import java.io.File
 
 class CustomSkillStore(private val context: Context) {
@@ -89,6 +86,69 @@ class CustomSkillStore(private val context: Context) {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun importFromGitHubRepo(urlString: String): Int = withContext(Dispatchers.IO) {
+        val (owner, repo) = parseGitHubURL(urlString)
+        val client = okhttp3.OkHttpClient()
+
+        // Fetch repo contents
+        val apiUrl = "https://api.github.com/repos/$owner/$repo/contents"
+        val request = okhttp3.Request.Builder()
+            .url(apiUrl)
+            .header("Accept", "application/vnd.github.v3+json")
+            .build()
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) throw Exception("GitHub API error: ${response.code}")
+
+        val body = response.body?.string() ?: throw Exception("Empty response")
+        val items = Json.parseToJsonElement(body).jsonArray
+
+        val dirs = items.filter {
+            val obj = it.jsonObject
+            obj["type"]?.jsonPrimitive?.contentOrNull == "dir" &&
+            obj["name"]?.jsonPrimitive?.contentOrNull != ".github"
+        }
+
+        var importedCount = 0
+        for (dir in dirs) {
+            val dirName = dir.jsonObject["name"]?.jsonPrimitive?.contentOrNull ?: continue
+            val skillUrl = "https://raw.githubusercontent.com/$owner/$repo/main/$dirName/SKILL.md"
+
+            try {
+                val skillRequest = okhttp3.Request.Builder().url(skillUrl).build()
+                val skillResponse = client.newCall(skillRequest).execute()
+                val content = skillResponse.body?.string() ?: continue
+
+                val parsed = CustomSkill.fromMarkdown(content) ?: continue
+                // Skip if already exists by name
+                if (_skills.value.any { it.name == parsed.name }) continue
+
+                val skill = parsed.copy(
+                    id = java.util.UUID.randomUUID().toString(),
+                    sourceUrl = "https://github.com/$owner/$repo/tree/main/$dirName"
+                )
+                save(skill)
+                importedCount++
+            } catch (_: Exception) {
+                continue
+            }
+        }
+
+        importedCount
+    }
+
+    private fun parseGitHubURL(urlString: String): Pair<String, String> {
+        // Parse https://github.com/owner/repo or github.com/owner/repo
+        val cleaned = urlString.trim()
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("github.com/")
+            .removeSuffix("/")
+            .removeSuffix(".git")
+        val parts = cleaned.split("/")
+        if (parts.size < 2) throw Exception("Invalid GitHub URL: expected github.com/owner/repo")
+        return parts[0] to parts[1]
     }
 
     fun exportSkill(id: String): String? {

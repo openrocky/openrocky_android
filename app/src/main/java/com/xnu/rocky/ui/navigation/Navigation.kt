@@ -24,6 +24,7 @@ import kotlinx.serialization.Serializable
 @Serializable object SkillsSettingsRoute
 @Serializable object CustomSkillsListRoute
 @Serializable data class CustomSkillEditorRoute(val skillId: String? = null)
+@Serializable object SkillImportRoute
 @Serializable object MemorySettingsRoute
 @Serializable object LogsRoute
 @Serializable data class LogFileRoute(val fileName: String)

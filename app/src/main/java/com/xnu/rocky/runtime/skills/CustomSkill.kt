@@ -19,7 +19,8 @@ data class CustomSkill(
     val description: String = "",
     val trigger: String = "",
     val prompt: String = "",
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    val sourceUrl: String? = null
 ) {
     fun toMarkdown(): String = buildString {
         appendLine("---")

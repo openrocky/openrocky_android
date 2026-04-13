@@ -315,6 +315,14 @@ fun OpenRockyMainApp() {
                     onEdit = { navController.navigate(CustomSkillEditorRoute(skillId = it)) },
                     onDelete = { viewModel.customSkillStore.delete(it) },
                     onAdd = { navController.navigate(CustomSkillEditorRoute()) },
+                    onImport = { navController.navigate(SkillImportRoute) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<SkillImportRoute> {
+                SkillImportView(
+                    skillStore = viewModel.customSkillStore,
                     onBack = { navController.popBackStack() }
                 )
             }

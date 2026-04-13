@@ -35,6 +35,7 @@ fun CustomSkillsListView(
     onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
     onAdd: () -> Unit,
+    onImport: () -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -42,7 +43,10 @@ fun CustomSkillsListView(
             TopAppBar(
                 title = { Text("Custom Skills", color = OpenRockyPalette.text) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OpenRockyPalette.text) } },
-                actions = { IconButton(onClick = onAdd) { Icon(Icons.Default.Add, "Add", tint = OpenRockyPalette.accent) } },
+                actions = {
+                    IconButton(onClick = onImport) { Icon(Icons.Default.Download, "Import", tint = OpenRockyPalette.accent) }
+                    IconButton(onClick = onAdd) { Icon(Icons.Default.Add, "Add", tint = OpenRockyPalette.accent) }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = OpenRockyPalette.background)
             )
         },
