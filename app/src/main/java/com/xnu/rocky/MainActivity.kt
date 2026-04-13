@@ -180,6 +180,7 @@ fun OpenRockyMainApp() {
                     onUsage = { navController.navigate(UsageSettingsRoute) },
                     onWorkspace = { navController.navigate(WorkspaceFilesRoute) },
                     onLogs = { navController.navigate(LogsRoute) },
+                    onDebug = { navController.navigate(DebugPanelRoute) },
                     onAbout = { navController.navigate(AboutRoute) }
                 )
             }
@@ -360,6 +361,34 @@ fun OpenRockyMainApp() {
             composable<FeaturesSettingsRoute> { FeaturesSettingsView(onBack = { navController.popBackStack() }) }
             composable<UsageSettingsRoute> { UsageSettingsView(usageService = viewModel.usageService, onBack = { navController.popBackStack() }) }
             composable<AboutRoute> { AboutView(onBack = { navController.popBackStack() }) }
+
+            composable<DebugPanelRoute> {
+                val chatStatus = viewModel.providerStore.let { store ->
+                    val inst = store.instances.value.find { it.id == store.activeInstanceID.value }
+                    com.xnu.rocky.models.ProviderStatus(
+                        name = inst?.kind?.displayName ?: "None",
+                        model = inst?.modelID ?: "",
+                        isConnected = inst != null
+                    )
+                }
+                val voiceStatus = viewModel.realtimeProviderStore.let { store ->
+                    val inst = store.instances.value.find { it.id == store.activeInstanceID.value }
+                    com.xnu.rocky.models.ProviderStatus(
+                        name = inst?.kind?.displayName ?: "None",
+                        model = inst?.modelID ?: "",
+                        isConnected = inst != null
+                    )
+                }
+                DebugPanelView(
+                    session = session,
+                    chatProviderStatus = chatStatus,
+                    voiceProviderStatus = voiceStatus,
+                    toolCount = viewModel.toolbox.chatToolDefinitions().size,
+                    skillCount = skills.count { it.enabled },
+                    memoryCount = memoryEntries.size,
+                    onBack = { navController.popBackStack() }
+                )
+            }
 
             composable<WorkspaceFilesRoute> {
                 WorkspaceFilesView(

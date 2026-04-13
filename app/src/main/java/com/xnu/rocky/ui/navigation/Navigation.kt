@@ -33,5 +33,6 @@ import kotlinx.serialization.Serializable
 @Serializable object AboutRoute
 @Serializable object WorkspaceFilesRoute
 @Serializable data class FilePreviewRoute(val filePath: String)
+@Serializable object DebugPanelRoute
 @Serializable object OnboardingRoute
 @Serializable object ConversationListRoute

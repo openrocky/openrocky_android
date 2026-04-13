@@ -43,6 +43,7 @@ fun ProviderSettingsView(
     onUsage: () -> Unit,
     onWorkspace: () -> Unit,
     onLogs: () -> Unit,
+    onDebug: () -> Unit,
     onAbout: () -> Unit
 ) {
     Scaffold(
@@ -111,6 +112,9 @@ fun ProviderSettingsView(
             }
             item {
                 SettingsRow(Icons.Default.BugReport, "Logs", "Debug logs viewer", OpenRockyPalette.muted, onLogs)
+            }
+            item {
+                SettingsRow(Icons.Default.Code, "Debug", "Session & runtime inspector", OpenRockyPalette.label, onDebug)
             }
 
             item { Spacer(Modifier.height(16.dp)) }
