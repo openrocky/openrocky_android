@@ -11,6 +11,7 @@ package com.xnu.rocky.runtime.voice
 
 import android.content.Context
 import com.xnu.rocky.providers.RealtimeProviderConfiguration
+import com.xnu.rocky.providers.RealtimeProviderKind
 import com.xnu.rocky.runtime.CharacterStore
 import com.xnu.rocky.runtime.LogManager
 import com.xnu.rocky.runtime.tools.Toolbox
@@ -29,8 +30,13 @@ class RealtimeVoiceBridge(
 
     private var client: RealtimeVoiceClient? = null
 
+    private fun makeClient(): RealtimeVoiceClient = when (config.provider) {
+        RealtimeProviderKind.OPENAI -> OpenAIRealtimeVoiceClient(config, toolbox, characterStore, context)
+        RealtimeProviderKind.GLM -> GLMRealtimeVoiceClient(config, toolbox, characterStore)
+    }
+
     fun start(): Flow<RealtimeEvent> = channelFlow {
-        val voiceClient = OpenAIRealtimeVoiceClient(config, toolbox, characterStore, context)
+        val voiceClient = makeClient()
         client = voiceClient
 
         voiceClient.connect().collect { event ->

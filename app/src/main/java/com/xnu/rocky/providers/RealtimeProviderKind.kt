@@ -29,5 +29,14 @@ enum class RealtimeProviderKind(
         credentialTitle = "API Key",
         credentialPlaceholder = "sk-...",
         guideUrl = "https://platform.openai.com/api-keys"
+    ),
+    GLM(
+        displayName = "GLM Realtime",
+        summary = "Zhipu AI end-to-end realtime voice with tool calling. Optimized for Chinese. No VPN needed in China.",
+        defaultModel = "glm-realtime",
+        suggestedModels = listOf("glm-realtime", "glm-realtime-flash"),
+        credentialTitle = "API Key",
+        credentialPlaceholder = "your-api-key...",
+        guideUrl = "https://open.bigmodel.cn/usercenter/apikeys"
     );
 }

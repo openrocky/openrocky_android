@@ -19,7 +19,8 @@ data class RealtimeProviderInstance(
     val kind: RealtimeProviderKind = RealtimeProviderKind.OPENAI,
     val modelID: String = "",
     val customHost: String = "",
-    val openaiVoice: String = "alloy"
+    val openaiVoice: String = "alloy",
+    val glmVoice: String = "tongtong"
 ) {
     val credentialKeychainKey: String
         get() = "realtime_provider_credential_$id"
@@ -29,6 +30,7 @@ data class RealtimeProviderInstance(
         modelID = modelID.ifBlank { kind.defaultModel },
         credential = credential,
         customHost = customHost,
-        openaiVoice = openaiVoice
+        openaiVoice = openaiVoice,
+        glmVoice = glmVoice
     )
 }

@@ -24,6 +24,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xnu.rocky.providers.RealtimeProviderInstance
+import com.xnu.rocky.providers.RealtimeProviderKind
+import com.xnu.rocky.runtime.voice.GLMVoice
 import com.xnu.rocky.runtime.voice.OpenAIVoice
 import com.xnu.rocky.ui.theme.OpenRockyPalette
 
@@ -37,9 +39,10 @@ fun RealtimeProviderInstanceEditorView(
 ) {
     val isNew = existingInstance == null
     var name by remember { mutableStateOf(existingInstance?.name ?: "") }
-    val kind = com.xnu.rocky.providers.RealtimeProviderKind.OPENAI
+    var kind by remember { mutableStateOf(existingInstance?.kind ?: RealtimeProviderKind.OPENAI) }
     var credential by remember { mutableStateOf(existingCredential) }
     var openaiVoice by remember { mutableStateOf(existingInstance?.openaiVoice ?: "alloy") }
+    var glmVoice by remember { mutableStateOf(existingInstance?.glmVoice ?: "tongtong") }
     var customHost by remember { mutableStateOf(existingInstance?.customHost ?: "") }
     var showPassword by remember { mutableStateOf(false) }
 
@@ -54,7 +57,7 @@ fun RealtimeProviderInstanceEditorView(
                     TextButton(onClick = {
                         val instance = (existingInstance ?: RealtimeProviderInstance()).copy(
                             name = name, kind = kind, modelID = kind.defaultModel,
-                            customHost = customHost, openaiVoice = openaiVoice
+                            customHost = customHost, openaiVoice = openaiVoice, glmVoice = glmVoice
                         )
                         onSave(instance, credential)
                         onBack()
@@ -72,11 +75,23 @@ fun RealtimeProviderInstanceEditorView(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            // Provider (display only — only OpenAI is supported)
+            // Provider selection
             item {
                 Text("Provider", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = OpenRockyPalette.muted)
-                Spacer(Modifier.height(4.dp))
-                Text(kind.displayName, fontSize = 14.sp, color = OpenRockyPalette.text)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RealtimeProviderKind.entries.forEach { providerKind ->
+                        FilterChip(
+                            selected = kind == providerKind, onClick = { kind = providerKind },
+                            label = { Text(providerKind.displayName, fontSize = 12.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OpenRockyPalette.accent.copy(alpha = 0.2f),
+                                containerColor = OpenRockyPalette.cardElevated
+                            )
+                        )
+                    }
+                }
+                Text(kind.summary, fontSize = 11.sp, color = OpenRockyPalette.label, modifier = Modifier.padding(top = 4.dp))
             }
 
             // Name
@@ -122,15 +137,36 @@ fun RealtimeProviderInstanceEditorView(
                 Text("Voice", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = OpenRockyPalette.muted)
                 Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OpenAIVoice.entries.forEach { voice ->
-                        FilterChip(
-                            selected = openaiVoice == voice.id, onClick = { openaiVoice = voice.id },
-                            label = { Text(voice.displayName, fontSize = 12.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = OpenRockyPalette.accent.copy(alpha = 0.2f),
-                                containerColor = OpenRockyPalette.cardElevated
-                            )
-                        )
+                    when (kind) {
+                        RealtimeProviderKind.OPENAI -> {
+                            OpenAIVoice.entries.forEach { voice ->
+                                FilterChip(
+                                    selected = openaiVoice == voice.id, onClick = { openaiVoice = voice.id },
+                                    label = { Text(voice.displayName, fontSize = 12.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = OpenRockyPalette.accent.copy(alpha = 0.2f),
+                                        containerColor = OpenRockyPalette.cardElevated
+                                    )
+                                )
+                            }
+                        }
+                        RealtimeProviderKind.GLM -> {
+                            GLMVoice.entries.forEach { voice ->
+                                FilterChip(
+                                    selected = glmVoice == voice.id, onClick = { glmVoice = voice.id },
+                                    label = {
+                                        Column {
+                                            Text(voice.displayName, fontSize = 12.sp)
+                                            Text(voice.subtitle, fontSize = 10.sp, color = OpenRockyPalette.label)
+                                        }
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = OpenRockyPalette.accent.copy(alpha = 0.2f),
+                                        containerColor = OpenRockyPalette.cardElevated
+                                    )
+                                )
+                            }
+                        }
                     }
                 }
             }

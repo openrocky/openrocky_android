@@ -103,9 +103,10 @@ class OpenRockyInstrumentedTest {
     @Test
     fun test_11_realtimeProviderKind_allPresent() {
         val kinds = RealtimeProviderKind.entries
-        assertEquals(1, kinds.size)
+        assertEquals(2, kinds.size)
         assertTrue(kinds.any { it.displayName == "OpenAI Realtime" })
-        Log.d(TAG, "✓ All 1 realtime provider kinds present")
+        assertTrue(kinds.any { it.displayName == "GLM Realtime" })
+        Log.d(TAG, "✓ All 2 realtime provider kinds present")
     }
 
     @Test
@@ -665,7 +666,12 @@ class OpenRockyInstrumentedTest {
     fun test_60_voiceEnums() {
         assertEquals(8, com.xnu.rocky.runtime.voice.OpenAIVoice.entries.size)
         assertEquals("alloy", com.xnu.rocky.runtime.voice.OpenAIVoice.ALLOY.id)
-        Log.d(TAG, "✓ Voice enums: OpenAI(8)")
+        assertEquals(7, com.xnu.rocky.runtime.voice.GLMVoice.entries.size)
+        assertEquals("tongtong", com.xnu.rocky.runtime.voice.GLMVoice.TONGTONG.id)
+        assertEquals(com.xnu.rocky.runtime.voice.GLMVoice.TONGTONG, com.xnu.rocky.runtime.voice.GLMVoice.DEFAULT)
+        assertEquals(com.xnu.rocky.runtime.voice.GLMVoice.XIAOCHEN, com.xnu.rocky.runtime.voice.GLMVoice.fromId("xiaochen"))
+        assertEquals(com.xnu.rocky.runtime.voice.GLMVoice.DEFAULT, com.xnu.rocky.runtime.voice.GLMVoice.fromId("unknown"))
+        Log.d(TAG, "✓ Voice enums: OpenAI(8), GLM(7)")
     }
 
     @Test
@@ -679,5 +685,223 @@ class OpenRockyInstrumentedTest {
         assertTrue(features.supportsToolCalls)
         assertFalse(features.needsMicSuspension)
         Log.d(TAG, "✓ RealtimeVoiceFeatures struct works")
+    }
+
+    @Test
+    fun test_62_glmToolConsolidation_resolveMapping() {
+        // Test location_weather category
+        val (name1, args1) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "location_weather", """{"action":"weather","latitude":39.9,"longitude":116.4}"""
+        )
+        assertEquals("weather", name1)
+        assertTrue("latitude should be preserved", args1.contains("39.9"))
+        assertFalse("action key should be removed", args1.contains("\"action\""))
+
+        // Test get_location (no extra args)
+        val (name2, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "location_weather", """{"action":"get_location"}"""
+        )
+        assertEquals("android-location", name2)
+
+        // Test geocode
+        val (name3, args3) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "location_weather", """{"action":"geocode","address":"Beijing"}"""
+        )
+        assertEquals("android-geocode", name3)
+        assertTrue(args3.contains("Beijing"))
+
+        // Test nearby
+        val (name4, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "location_weather", """{"action":"nearby","query":"coffee"}"""
+        )
+        assertEquals("nearby-search", name4)
+
+        Log.d(TAG, "✓ GLM tool consolidation: location_weather category resolves correctly")
+    }
+
+    @Test
+    fun test_63_glmToolConsolidation_calendarReminders() {
+        val (name1, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "calendar_reminders", """{"action":"list_events","start_date":"2026-04-12","end_date":"2026-04-19"}"""
+        )
+        assertEquals("android-calendar-list", name1)
+
+        val (name2, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "calendar_reminders", """{"action":"create_event","title":"Meeting","start_date":"2026-04-12T10:00:00"}"""
+        )
+        assertEquals("android-calendar-create", name2)
+
+        val (name3, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "calendar_reminders", """{"action":"list_reminders"}"""
+        )
+        assertEquals("android-reminder-list", name3)
+
+        val (name4, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "calendar_reminders", """{"action":"create_reminder","title":"Buy groceries"}"""
+        )
+        assertEquals("android-reminder-create", name4)
+
+        val (name5, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "calendar_reminders", """{"action":"set_alarm","time":"08:00"}"""
+        )
+        assertEquals("android-alarm", name5)
+
+        Log.d(TAG, "✓ GLM tool consolidation: calendar_reminders category resolves correctly")
+    }
+
+    @Test
+    fun test_64_glmToolConsolidation_allCategories() {
+        // contacts_communication
+        val (c1, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "contacts_communication", """{"action":"search_contacts","query":"John"}"""
+        )
+        assertEquals("android-contacts-search", c1)
+
+        val (c2, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "contacts_communication", """{"action":"send_notification","title":"Reminder"}"""
+        )
+        assertEquals("notification-schedule", c2)
+
+        val (c3, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "contacts_communication", """{"action":"open_url","url":"https://example.com"}"""
+        )
+        assertEquals("open-url", c3)
+
+        // web_search
+        val (w1, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "web_search", """{"action":"search","query":"android"}"""
+        )
+        assertEquals("web-search", w1)
+
+        val (w2, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "web_search", """{"action":"read_page","url":"https://example.com"}"""
+        )
+        assertEquals("browser-read", w2)
+
+        // files_memory
+        val (f1, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "files_memory", """{"action":"read_file","path":"test.txt"}"""
+        )
+        assertEquals("file-read", f1)
+
+        val (f2, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "files_memory", """{"action":"memory_get","key":"name"}"""
+        )
+        assertEquals("memory_get", f2)
+
+        // code_execute
+        val (x1, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "code_execute", """{"action":"shell","command":"ls"}"""
+        )
+        assertEquals("shell-execute", x1)
+
+        val (x2, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "code_execute", """{"action":"python","code":"print(1)"}"""
+        )
+        assertEquals("python-execute", x2)
+
+        // media_capture
+        val (m1, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "media_capture", """{"action":"camera"}"""
+        )
+        assertEquals("camera-capture", m1)
+
+        // delegate_task (pass-through)
+        val (d1, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "delegate_task", """{"task":"analyze data"}"""
+        )
+        assertEquals("delegate-task", d1)
+
+        Log.d(TAG, "✓ GLM tool consolidation: all 8 categories resolve correctly")
+    }
+
+    @Test
+    fun test_65_glmToolConsolidation_unknownPassthrough() {
+        // Unknown category should pass through
+        val (name, args) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "unknown_tool", """{"foo":"bar"}"""
+        )
+        assertEquals("unknown_tool", name)
+        assertEquals("""{"foo":"bar"}""", args)
+
+        // Unknown action within known category should pass through
+        val (name2, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "location_weather", """{"action":"unknown_action"}"""
+        )
+        assertEquals("location_weather", name2)
+
+        // Invalid JSON should pass through
+        val (name3, args3) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "web_search", "not json"
+        )
+        assertEquals("web_search", name3)
+        assertEquals("not json", args3)
+
+        Log.d(TAG, "✓ GLM tool consolidation: unknown/invalid inputs pass through safely")
+    }
+
+    @Test
+    fun test_66_glmProviderConfiguration() {
+        val config = RealtimeProviderConfiguration(
+            provider = RealtimeProviderKind.GLM,
+            modelID = "glm-realtime",
+            credential = "test-key",
+            glmVoice = "xiaochen"
+        )
+        assertTrue(config.isValid)
+        assertEquals("glm-realtime", config.modelID)
+        assertEquals("xiaochen", config.glmVoice)
+        assertEquals("tongtong", RealtimeProviderConfiguration(
+            provider = RealtimeProviderKind.GLM,
+            modelID = "glm-realtime",
+            credential = "k"
+        ).glmVoice)
+        Log.d(TAG, "✓ GLM provider configuration works")
+    }
+
+    @Test
+    fun test_67_glmProviderInstance_toConfiguration() {
+        val instance = RealtimeProviderInstance(
+            name = "My GLM",
+            kind = RealtimeProviderKind.GLM,
+            modelID = "glm-realtime-flash",
+            glmVoice = "female-tianmei"
+        )
+        val config = instance.toConfiguration("test-cred")
+        assertEquals(RealtimeProviderKind.GLM, config.provider)
+        assertEquals("glm-realtime-flash", config.modelID)
+        assertEquals("female-tianmei", config.glmVoice)
+        assertEquals("test-cred", config.credential)
+
+        // Test default model fallback
+        val instanceNoModel = RealtimeProviderInstance(kind = RealtimeProviderKind.GLM)
+        val configDefault = instanceNoModel.toConfiguration("key")
+        assertEquals("glm-realtime", configDefault.modelID)
+        Log.d(TAG, "✓ GLM provider instance toConfiguration works")
+    }
+
+    @Test
+    fun test_68_consolidatedToolMapping_completeness() {
+        // Verify all expected Android tools are in the mapping
+        val allMappedTools = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.consolidatedToolMapping
+            .values.flatMap { it.values }.toSet()
+
+        val expectedTools = setOf(
+            "android-location", "android-geocode", "weather", "nearby-search",
+            "android-calendar-list", "android-calendar-create",
+            "android-reminder-list", "android-reminder-create", "android-alarm",
+            "android-contacts-search", "notification-schedule", "open-url",
+            "web-search", "browser-read", "browser-open",
+            "file-read", "file-write", "memory_get", "memory_write", "todo",
+            "shell-execute", "python-execute",
+            "camera-capture", "photo-pick", "file-pick",
+            "delegate-task"
+        )
+
+        for (tool in expectedTools) {
+            assertTrue("Missing tool in consolidation mapping: $tool", allMappedTools.contains(tool))
+        }
+        assertEquals(8, com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.consolidatedToolMapping.size)
+        Log.d(TAG, "✓ Consolidated tool mapping covers all ${expectedTools.size} expected tools across 8 categories")
     }
 }
