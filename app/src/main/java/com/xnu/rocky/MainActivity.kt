@@ -176,6 +176,7 @@ fun OpenRockyMainApp() {
                     onSkills = { navController.navigate(SkillsSettingsRoute) },
                     onCustomSkills = { navController.navigate(CustomSkillsListRoute) },
                     onMemory = { navController.navigate(MemorySettingsRoute) },
+                    onEmail = { navController.navigate(EmailSettingsRoute) },
                     onFeatures = { navController.navigate(FeaturesSettingsRoute) },
                     onUsage = { navController.navigate(UsageSettingsRoute) },
                     onWorkspace = { navController.navigate(WorkspaceFilesRoute) },
@@ -361,6 +362,10 @@ fun OpenRockyMainApp() {
             composable<FeaturesSettingsRoute> { FeaturesSettingsView(onBack = { navController.popBackStack() }) }
             composable<UsageSettingsRoute> { UsageSettingsView(usageService = viewModel.usageService, onBack = { navController.popBackStack() }) }
             composable<AboutRoute> { AboutView(onBack = { navController.popBackStack() }) }
+
+            composable<EmailSettingsRoute> {
+                EmailSettingsView(onBack = { navController.popBackStack() })
+            }
 
             composable<DebugPanelRoute> {
                 val chatStatus = viewModel.providerStore.let { store ->

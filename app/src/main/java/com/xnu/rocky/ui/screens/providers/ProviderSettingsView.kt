@@ -39,6 +39,7 @@ fun ProviderSettingsView(
     onSkills: () -> Unit,
     onCustomSkills: () -> Unit,
     onMemory: () -> Unit,
+    onEmail: () -> Unit,
     onFeatures: () -> Unit,
     onUsage: () -> Unit,
     onWorkspace: () -> Unit,
@@ -100,6 +101,9 @@ fun ProviderSettingsView(
             item { Spacer(Modifier.height(16.dp)) }
             item {
                 SectionHeader("System")
+            }
+            item {
+                SettingsRow(Icons.Default.Email, "Email", "SMTP email configuration", OpenRockyPalette.accent, onEmail)
             }
             item {
                 SettingsRow(Icons.Default.ToggleOn, "Features", "Optional integrations", OpenRockyPalette.warning, onFeatures)
