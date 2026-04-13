@@ -23,8 +23,8 @@ enum class ProviderKind(
 ) {
     OPENAI(
         displayName = "OpenAI",
-        summary = "GPT-4o, GPT-5, GPT-5 mini",
-        defaultModel = "gpt-4o",
+        summary = "GPT-5, GPT-5 mini, GPT-4o",
+        defaultModel = "gpt-5",
         suggestedModels = listOf("gpt-5", "gpt-5-mini", "gpt-4o", "gpt-4o-mini", "o3-mini"),
         apiKeyPlaceholder = "sk-...",
         guideUrl = "https://platform.openai.com/api-keys",
@@ -78,8 +78,8 @@ enum class ProviderKind(
     OPENROUTER(
         displayName = "OpenRouter",
         summary = "Multi-model gateway",
-        defaultModel = "openai/gpt-4o",
-        suggestedModels = listOf("openai/gpt-4o", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-exp"),
+        defaultModel = "anthropic/claude-sonnet-4.5",
+        suggestedModels = listOf("anthropic/claude-sonnet-4.5", "deepseek/deepseek-r1", "openai/gpt-4o"),
         apiKeyPlaceholder = "sk-or-...",
         guideUrl = "https://openrouter.ai/keys",
         baseUrl = "https://openrouter.ai/api/v1/"
@@ -94,19 +94,37 @@ enum class ProviderKind(
         baseUrl = "https://api.deepseek.com/v1/"
     ),
     VOLCENGINE(
-        displayName = "Volcengine Doubao",
-        summary = "Doubao Seed 1.6",
-        defaultModel = "doubao-seed-1-6",
-        suggestedModels = listOf("doubao-seed-1-6", "doubao-1-5-pro-256k", "doubao-1-5-pro-32k"),
+        displayName = "Doubao (Volcengine)",
+        summary = "Doubao Seed 1.8, Doubao 1.5 Pro",
+        defaultModel = "doubao-seed-1-8-251228",
+        suggestedModels = listOf("doubao-seed-1-8-251228", "doubao-1.5-pro-256k-250115", "doubao-1.5-thinking-pro-250415"),
         apiKeyPlaceholder = "API Key",
         guideUrl = "https://console.volcengine.com/ark",
         baseUrl = "https://ark.cn-beijing.volces.com/api/v3/"
     ),
+    ZHIPU_AI(
+        displayName = "Zhipu AI (GLM)",
+        summary = "Zhipu AI GLM OpenAI-compatible endpoint",
+        defaultModel = "glm-4.7",
+        suggestedModels = listOf("glm-4.7", "glm-5", "glm-5-turbo", "glm-5.1", "glm-4.5"),
+        apiKeyPlaceholder = "sk-...",
+        guideUrl = "https://open.bigmodel.cn/usercenter/apikeys",
+        baseUrl = "https://open.bigmodel.cn/api/paas/v4/"
+    ),
+    BAILIAN(
+        displayName = "Bailian Coding Plan",
+        summary = "Alibaba Cloud Bailian Coding Plan. OpenAI-compatible endpoint.",
+        defaultModel = "qwen-plus",
+        suggestedModels = listOf("qwen-plus", "qwen-max", "qwen-turbo", "qwen3-235b-a22b"),
+        apiKeyPlaceholder = "sk-sp-...",
+        guideUrl = "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan",
+        baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/"
+    ),
     AIPROXY(
         displayName = "AIProxy",
-        summary = "Proxy-backed provider",
-        defaultModel = "gpt-4o",
-        suggestedModels = listOf("gpt-4o", "gpt-4o-mini"),
+        summary = "AIProxy-backed OpenAI traffic using partial key plus service URL",
+        defaultModel = "gpt-5",
+        suggestedModels = listOf("gpt-5", "gpt-5-mini", "gpt-4o"),
         apiKeyPlaceholder = "Partial Key",
         guideUrl = "https://www.aiproxy.pro",
         baseUrl = ""

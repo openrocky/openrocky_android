@@ -92,12 +92,14 @@ class OpenRockyInstrumentedTest {
     @Test
     fun test_10_providerKind_allPresent() {
         val kinds = ProviderKind.entries
-        assertEquals(10, kinds.size)
+        assertEquals(12, kinds.size)
         assertTrue(kinds.any { it.displayName == "OpenAI" })
         assertTrue(kinds.any { it.displayName == "Anthropic" })
         assertTrue(kinds.any { it.displayName == "Gemini" })
         assertTrue(kinds.any { it.displayName == "DeepSeek" })
-        Log.d(TAG, "✓ All 10 provider kinds present")
+        assertTrue(kinds.any { it.displayName == "Zhipu AI (GLM)" })
+        assertTrue(kinds.any { it.displayName == "Bailian Coding Plan" })
+        Log.d(TAG, "✓ All 12 provider kinds present")
     }
 
     @Test
