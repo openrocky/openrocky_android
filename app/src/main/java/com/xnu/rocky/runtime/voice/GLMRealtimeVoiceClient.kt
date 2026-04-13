@@ -69,7 +69,8 @@ class GLMRealtimeVoiceClient(
             ),
             "code_execute" to mapOf(
                 "shell" to "shell-execute",
-                "python" to "python-execute"
+                "python" to "python-execute",
+                "ffmpeg" to "ffmpeg-execute"
             ),
             "media_capture" to mapOf(
                 "camera" to "camera-capture",
@@ -672,11 +673,11 @@ Voice-specific rules:
             addJsonObject {
                 put("type", JsonPrimitive("function"))
                 put("name", JsonPrimitive("code_execute"))
-                put("description", JsonPrimitive("Execute code on device. Actions: shell (needs: command), python (needs: code)"))
+                put("description", JsonPrimitive("Execute code on device. Actions: shell (needs: command), python (needs: code), ffmpeg (needs: command)"))
                 putJsonObject("parameters") {
                     put("type", JsonPrimitive("object"))
                     putJsonObject("properties") {
-                        putJsonObject("action") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("One of: shell, python")) }
+                        putJsonObject("action") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("One of: shell, python, ffmpeg")) }
                         putJsonObject("command") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Shell command")) }
                         putJsonObject("code") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Python code to execute")) }
                     }

@@ -39,6 +39,7 @@ class Toolbox(
     private val browserService = BrowserService(context)
     private val reminderService = ReminderService(context)
     private val mediaService = MediaService(context)
+    private val ffmpegService = FFmpegService(context)
     private val builtInToolStore = BuiltInToolStore(context)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -157,6 +158,10 @@ class Toolbox(
                             if (result.output.isNotBlank()) appendLine(result.output)
                         }
                     }
+                }
+                "ffmpeg-execute" -> {
+                    val command = args["command"]?.jsonPrimitive?.contentOrNull ?: ""
+                    ffmpegService.execute(command)
                 }
                 "nearby-search" -> {
                     val query = args["query"]?.jsonPrimitive?.contentOrNull ?: ""
@@ -464,6 +469,17 @@ class Toolbox(
                     putJsonObject("code") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Python source code to execute. Use print() to produce output.")) }
                 }
                 putJsonArray("required") { add(JsonPrimitive("code")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "ffmpeg-execute",
+            description = "Run an FFmpeg command for audio/video processing. Supports format conversion, trimming, merging, extracting audio, adding effects, and more. Files should use paths relative to the workspace directory.",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("command") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("FFmpeg command arguments (e.g. '-i input.mp4 -vn output.mp3')")) }
+                }
+                putJsonArray("required") { add(JsonPrimitive("command")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(

@@ -804,6 +804,11 @@ class OpenRockyInstrumentedTest {
         )
         assertEquals("python-execute", x2)
 
+        val (x3, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
+            "code_execute", """{"action":"ffmpeg","command":"-i in.mp4 out.mp3"}"""
+        )
+        assertEquals("ffmpeg-execute", x3)
+
         // media_capture
         val (m1, _) = com.xnu.rocky.runtime.voice.GLMRealtimeVoiceClient.resolveConsolidatedToolCall(
             "media_capture", """{"action":"camera"}"""
@@ -897,7 +902,7 @@ class OpenRockyInstrumentedTest {
             "android-contacts-search", "notification-schedule", "open-url",
             "web-search", "browser-read", "browser-open",
             "file-read", "file-write", "memory_get", "memory_write", "todo",
-            "shell-execute", "python-execute",
+            "shell-execute", "python-execute", "ffmpeg-execute",
             "camera-capture", "photo-pick", "file-pick",
             "delegate-task"
         )
