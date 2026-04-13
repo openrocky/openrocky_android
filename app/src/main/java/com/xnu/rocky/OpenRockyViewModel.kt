@@ -22,6 +22,7 @@ class OpenRockyViewModel(application: Application) : AndroidViewModel(applicatio
     val providerStore = ProviderStore(application)
     val realtimeProviderStore = RealtimeProviderStore(application)
     val characterStore = CharacterStore(application)
+    val soulStore = SoulStore(application)
     val memoryService = MemoryService(application)
     val usageService = UsageService(application)
     val storageProvider = PersistentStorageProvider(application)

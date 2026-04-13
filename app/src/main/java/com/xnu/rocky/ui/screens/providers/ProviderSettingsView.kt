@@ -35,6 +35,7 @@ fun ProviderSettingsView(
     onChatProviders: () -> Unit,
     onVoiceProviders: () -> Unit,
     onCharacters: () -> Unit,
+    onSoul: () -> Unit,
     onSkills: () -> Unit,
     onCustomSkills: () -> Unit,
     onMemory: () -> Unit,
@@ -81,6 +82,9 @@ fun ProviderSettingsView(
             }
             item {
                 SettingsRow(Icons.Default.Person, "Characters", "Manage AI personalities", OpenRockyPalette.accent, onCharacters)
+            }
+            item {
+                SettingsRow(Icons.Default.Psychology, "Soul", "Core AI persona & behavior style", OpenRockyPalette.secondary, onSoul)
             }
             item {
                 SettingsRow(Icons.Default.Build, "Tools", "Built-in tools", OpenRockyPalette.warning, onSkills)

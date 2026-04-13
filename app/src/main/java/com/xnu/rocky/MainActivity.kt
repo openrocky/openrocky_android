@@ -69,6 +69,8 @@ fun OpenRockyMainApp() {
     val activeRealtimeId by viewModel.realtimeProviderStore.activeInstanceID.collectAsStateWithLifecycle()
     val characters by viewModel.characterStore.characters.collectAsStateWithLifecycle()
     val activeCharacterId by viewModel.characterStore.activeCharacterID.collectAsStateWithLifecycle()
+    val souls by viewModel.soulStore.souls.collectAsStateWithLifecycle()
+    val activeSoulId by viewModel.soulStore.activeSoulID.collectAsStateWithLifecycle()
     val memoryEntries by viewModel.memoryService.entries.collectAsStateWithLifecycle()
     val skills by viewModel.customSkillStore.skills.collectAsStateWithLifecycle()
 
@@ -170,6 +172,7 @@ fun OpenRockyMainApp() {
                     onChatProviders = { navController.navigate(ProviderInstanceListRoute) },
                     onVoiceProviders = { navController.navigate(RealtimeProviderInstanceListRoute) },
                     onCharacters = { navController.navigate(CharacterSettingsRoute) },
+                    onSoul = { navController.navigate(SoulSettingsRoute) },
                     onSkills = { navController.navigate(SkillsSettingsRoute) },
                     onCustomSkills = { navController.navigate(CustomSkillsListRoute) },
                     onMemory = { navController.navigate(MemorySettingsRoute) },
@@ -272,6 +275,28 @@ fun OpenRockyMainApp() {
                     character = character,
                     onSave = { viewModel.characterStore.save(it) },
                     onReset = if (character?.isBuiltIn == true) { { id -> viewModel.characterStore.resetBuiltIn(id) } } else null,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<SoulSettingsRoute> {
+                SoulSettingsView(
+                    souls = souls,
+                    activeSoulId = activeSoulId,
+                    onActivate = { viewModel.soulStore.activate(it) },
+                    onEdit = { navController.navigate(SoulEditorRoute(soulId = it)) },
+                    onDelete = { viewModel.soulStore.delete(it) },
+                    onAdd = { navController.navigate(SoulEditorRoute()) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<SoulEditorRoute> { entry ->
+                val route = entry.toRoute<SoulEditorRoute>()
+                val soul = route.soulId?.let { id -> souls.find { it.id == id } }
+                SoulEditorView(
+                    existingSoul = soul,
+                    soulStore = viewModel.soulStore,
                     onBack = { navController.popBackStack() }
                 )
             }

@@ -19,6 +19,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class RealtimeProviderInstanceEditorRoute(val instanceId: String? = null)
 @Serializable object CharacterSettingsRoute
 @Serializable data class CharacterEditorRoute(val characterId: String? = null)
+@Serializable object SoulSettingsRoute
+@Serializable data class SoulEditorRoute(val soulId: String? = null)
 @Serializable object SkillsSettingsRoute
 @Serializable object CustomSkillsListRoute
 @Serializable data class CustomSkillEditorRoute(val skillId: String? = null)
