@@ -52,6 +52,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun startDictation(
+    viewModel: OpenRockyViewModel,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onResult: (String) -> Unit
+) {
+    val cfg = viewModel.sttProviderStore.activeConfiguration ?: return
+    viewModel.dictationService.startDictation(
+        configuration = cfg,
+        scope = scope,
+        onResult = onResult,
+        onError = { err -> android.util.Log.w("Dictation", err) }
+    )
+}
+
 @Composable
 fun OpenRockyMainApp() {
     val viewModel: OpenRockyViewModel = viewModel()
@@ -67,6 +81,10 @@ fun OpenRockyMainApp() {
     val activeProviderId by viewModel.providerStore.activeInstanceID.collectAsStateWithLifecycle()
     val realtimeInstances by viewModel.realtimeProviderStore.instances.collectAsStateWithLifecycle()
     val activeRealtimeId by viewModel.realtimeProviderStore.activeInstanceID.collectAsStateWithLifecycle()
+    val sttInstances by viewModel.sttProviderStore.instances.collectAsStateWithLifecycle()
+    val activeSttId by viewModel.sttProviderStore.activeInstanceID.collectAsStateWithLifecycle()
+    val ttsInstances by viewModel.ttsProviderStore.instances.collectAsStateWithLifecycle()
+    val activeTtsId by viewModel.ttsProviderStore.activeInstanceID.collectAsStateWithLifecycle()
     val characters by viewModel.characterStore.characters.collectAsStateWithLifecycle()
     val activeCharacterId by viewModel.characterStore.activeCharacterID.collectAsStateWithLifecycle()
     val souls by viewModel.soulStore.souls.collectAsStateWithLifecycle()
@@ -86,6 +104,31 @@ fun OpenRockyMainApp() {
     var showConversationList by remember { mutableStateOf(false) }
     var showVoiceOverlay by remember { mutableStateOf(false) }
     var currentConversationId by remember { mutableStateOf<String?>(null) }
+    var dictationResult by remember { mutableStateOf<String?>(null) }
+    val isDictating by viewModel.dictationService.isRecording.collectAsStateWithLifecycle()
+    var pendingDictation by remember { mutableStateOf(false) }
+    val dictationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted && pendingDictation) {
+            startDictation(viewModel, scope) { result -> dictationResult = result }
+        }
+        pendingDictation = false
+    }
+    fun tryStartDictation() {
+        val cfg = viewModel.sttProviderStore.activeConfiguration
+        if (cfg == null) {
+            dictationResult = null
+            android.widget.Toast.makeText(context, "Configure an STT provider first", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (viewModel.dictationService.hasPermission()) {
+            startDictation(viewModel, scope) { result -> dictationResult = result }
+        } else {
+            pendingDictation = true
+            dictationPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (viewModel.needsOnboarding) {
@@ -140,6 +183,11 @@ fun OpenRockyMainApp() {
                             onSendMessage = { viewModel.sessionRuntime.sendTextMessage(it) },
                             onQuickTask = { viewModel.sessionRuntime.sendTextMessage(it.prompt) },
                             onConversationsClick = { showConversationList = true },
+                            isDictating = isDictating,
+                            onStartDictation = { tryStartDictation() },
+                            onStopDictation = { viewModel.dictationService.stopDictation() },
+                            dictationResult = dictationResult,
+                            onDictationConsumed = { dictationResult = null },
                             modifier = Modifier.weight(1f)
                         )
                     } else {
@@ -147,7 +195,12 @@ fun OpenRockyMainApp() {
                         if (!isVoiceActive) {
                             com.xnu.rocky.ui.screens.home.ComposerBarStandalone(
                                 onSendMessage = { viewModel.sessionRuntime.sendTextMessage(it) },
-                                onConversationsClick = { showConversationList = true }
+                                onConversationsClick = { showConversationList = true },
+                                isDictating = isDictating,
+                                onStartDictation = { tryStartDictation() },
+                                onStopDictation = { viewModel.dictationService.stopDictation() },
+                                dictationResult = dictationResult,
+                                onDictationConsumed = { dictationResult = null }
                             )
                         }
                     }
@@ -171,6 +224,9 @@ fun OpenRockyMainApp() {
                     onBack = { navController.popBackStack() },
                     onChatProviders = { navController.navigate(ProviderInstanceListRoute) },
                     onVoiceProviders = { navController.navigate(RealtimeProviderInstanceListRoute) },
+                    onSTTProviders = { navController.navigate(STTProviderInstanceListRoute) },
+                    onTTSProviders = { navController.navigate(TTSProviderInstanceListRoute) },
+                    onVoiceMode = { navController.navigate(VoiceModeRoute) },
                     onCharacters = { navController.navigate(CharacterSettingsRoute) },
                     onSoul = { navController.navigate(SoulSettingsRoute) },
                     onSkills = { navController.navigate(SkillsSettingsRoute) },
@@ -255,6 +311,61 @@ fun OpenRockyMainApp() {
                     existingInstance = existing,
                     existingCredential = credential,
                     onSave = { inst, cred -> viewModel.realtimeProviderStore.save(inst, cred) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<STTProviderInstanceListRoute> {
+                STTProviderInstanceListView(
+                    instances = sttInstances,
+                    activeInstanceId = activeSttId,
+                    onSelect = { viewModel.sttProviderStore.activate(it) },
+                    onEdit = { navController.navigate(STTProviderInstanceEditorRoute(instanceId = it)) },
+                    onDelete = { viewModel.sttProviderStore.delete(it) },
+                    onAdd = { navController.navigate(STTProviderInstanceEditorRoute()) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<STTProviderInstanceEditorRoute> { entry ->
+                val route = entry.toRoute<STTProviderInstanceEditorRoute>()
+                val existing = route.instanceId?.let { id -> sttInstances.find { it.id == id } }
+                val credential = existing?.let { viewModel.sttProviderStore.credentialFor(it) } ?: ""
+                STTProviderInstanceEditorView(
+                    existingInstance = existing,
+                    existingCredential = credential,
+                    onSave = { inst, cred -> viewModel.sttProviderStore.save(inst, cred) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<TTSProviderInstanceListRoute> {
+                TTSProviderInstanceListView(
+                    instances = ttsInstances,
+                    activeInstanceId = activeTtsId,
+                    onSelect = { viewModel.ttsProviderStore.activate(it) },
+                    onEdit = { navController.navigate(TTSProviderInstanceEditorRoute(instanceId = it)) },
+                    onDelete = { viewModel.ttsProviderStore.delete(it) },
+                    onAdd = { navController.navigate(TTSProviderInstanceEditorRoute()) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<TTSProviderInstanceEditorRoute> { entry ->
+                val route = entry.toRoute<TTSProviderInstanceEditorRoute>()
+                val existing = route.instanceId?.let { id -> ttsInstances.find { it.id == id } }
+                val credential = existing?.let { viewModel.ttsProviderStore.credentialFor(it) } ?: ""
+                TTSProviderInstanceEditorView(
+                    existingInstance = existing,
+                    existingCredential = credential,
+                    onSave = { inst, cred -> viewModel.ttsProviderStore.save(inst, cred) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<VoiceModeRoute> {
+                VoiceModeView(
+                    preferences = viewModel.preferences,
                     onBack = { navController.popBackStack() }
                 )
             }

@@ -34,6 +34,9 @@ fun ProviderSettingsView(
     onBack: () -> Unit,
     onChatProviders: () -> Unit,
     onVoiceProviders: () -> Unit,
+    onSTTProviders: () -> Unit,
+    onTTSProviders: () -> Unit,
+    onVoiceMode: () -> Unit,
     onCharacters: () -> Unit,
     onSoul: () -> Unit,
     onSkills: () -> Unit,
@@ -76,7 +79,16 @@ fun ProviderSettingsView(
                 SettingsRow(Icons.AutoMirrored.Filled.Chat, "Chat Providers", "Configure AI models", OpenRockyPalette.accent, onChatProviders)
             }
             item {
-                SettingsRow(Icons.Default.GraphicEq, "Voice Providers", "Configure realtime voice", OpenRockyPalette.secondary, onVoiceProviders)
+                SettingsRow(Icons.Default.GraphicEq, "Realtime Voice", "End-to-end streaming voice", OpenRockyPalette.secondary, onVoiceProviders)
+            }
+            item {
+                SettingsRow(Icons.Default.Mic, "Speech-to-Text", "Classic mode STT providers", OpenRockyPalette.accent, onSTTProviders)
+            }
+            item {
+                SettingsRow(Icons.Default.RecordVoiceOver, "Text-to-Speech", "Classic mode TTS providers", OpenRockyPalette.secondary, onTTSProviders)
+            }
+            item {
+                SettingsRow(Icons.Default.Tune, "Voice Mode", "Realtime or Classic pipeline", OpenRockyPalette.warning, onVoiceMode)
             }
 
             item { Spacer(Modifier.height(16.dp)) }

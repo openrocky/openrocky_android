@@ -17,6 +17,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,12 +29,31 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xnu.rocky.ui.theme.OpenRockyPalette
 
+/**
+ * Shared composer bar. Callers that want dictation should pass:
+ *  - isDictating state
+ *  - onStartDictation (launches STT; parent appends resulting text via [dictationResult])
+ *  - onStopDictation
+ *  - dictationResult: newest STT result appended into the composer when it changes.
+ */
 @Composable
 fun ComposerBarStandalone(
     onSendMessage: (String) -> Unit,
-    onConversationsClick: () -> Unit = {}
+    onConversationsClick: () -> Unit = {},
+    isDictating: Boolean = false,
+    onStartDictation: (() -> Unit)? = null,
+    onStopDictation: (() -> Unit)? = null,
+    dictationResult: String? = null,
+    onDictationConsumed: () -> Unit = {}
 ) {
     var text by remember { mutableStateOf("") }
+    LaunchedEffect(dictationResult) {
+        val incoming = dictationResult
+        if (!incoming.isNullOrBlank()) {
+            text = if (text.isBlank()) incoming else "$text $incoming"
+            onDictationConsumed()
+        }
+    }
 
     Surface(color = OpenRockyPalette.card, shadowElevation = 8.dp) {
         Row(
@@ -43,16 +64,8 @@ fun ComposerBarStandalone(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            IconButton(
-                onClick = onConversationsClick,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Icon(
-                    Icons.Default.Forum,
-                    contentDescription = "Conversations",
-                    tint = OpenRockyPalette.muted,
-                    modifier = Modifier.size(22.dp)
-                )
+            IconButton(onClick = onConversationsClick, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Forum, "Conversations", tint = OpenRockyPalette.muted, modifier = Modifier.size(22.dp))
             }
 
             BasicTextField(
@@ -63,40 +76,58 @@ fun ComposerBarStandalone(
                     .clip(RoundedCornerShape(20.dp))
                     .background(OpenRockyPalette.cardElevated)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
-                textStyle = LocalTextStyle.current.copy(
-                    color = OpenRockyPalette.text,
-                    fontSize = 15.sp
-                ),
+                textStyle = LocalTextStyle.current.copy(color = OpenRockyPalette.text, fontSize = 15.sp),
                 cursorBrush = SolidColor(OpenRockyPalette.accent),
                 singleLine = true,
                 decorationBox = { innerTextField ->
                     Box {
                         if (text.isEmpty()) {
-                            Text("Ask Rocky anything…", color = OpenRockyPalette.label, fontSize = 15.sp)
+                            Text(
+                                if (isDictating) "Listening…" else "Ask Rocky anything…",
+                                color = OpenRockyPalette.label,
+                                fontSize = 15.sp
+                            )
                         }
                         innerTextField()
                     }
                 }
             )
 
-            IconButton(
-                onClick = {
-                    if (text.isNotBlank()) {
-                        onSendMessage(text)
-                        text = ""
-                    }
-                },
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(if (text.isNotBlank()) OpenRockyPalette.accent else OpenRockyPalette.cardElevated)
-            ) {
-                Icon(
-                    Icons.Default.ArrowUpward,
-                    contentDescription = "Send",
-                    tint = if (text.isNotBlank()) OpenRockyPalette.background else OpenRockyPalette.muted,
-                    modifier = Modifier.size(20.dp)
-                )
+            if (text.isBlank() && onStartDictation != null) {
+                IconButton(
+                    onClick = { if (isDictating) onStopDictation?.invoke() else onStartDictation() },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (isDictating) OpenRockyPalette.error else OpenRockyPalette.cardElevated)
+                ) {
+                    Icon(
+                        if (isDictating) Icons.Default.Stop else Icons.Default.Mic,
+                        contentDescription = if (isDictating) "Stop dictation" else "Dictate",
+                        tint = if (isDictating) OpenRockyPalette.background else OpenRockyPalette.muted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = {
+                        if (text.isNotBlank()) {
+                            onSendMessage(text)
+                            text = ""
+                        }
+                    },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (text.isNotBlank()) OpenRockyPalette.accent else OpenRockyPalette.cardElevated)
+                ) {
+                    Icon(
+                        Icons.Default.ArrowUpward,
+                        contentDescription = "Send",
+                        tint = if (text.isNotBlank()) OpenRockyPalette.background else OpenRockyPalette.muted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }

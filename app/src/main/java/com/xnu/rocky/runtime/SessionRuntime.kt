@@ -15,6 +15,7 @@ import com.xnu.rocky.providers.*
 import com.xnu.rocky.runtime.tools.Toolbox
 import com.xnu.rocky.runtime.voice.RealtimeEvent
 import com.xnu.rocky.runtime.voice.RealtimeVoiceBridge
+import com.xnu.rocky.runtime.voice.TraditionalVoiceBridge
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,16 +29,20 @@ class SessionRuntime(
     private val context: Context,
     private val providerStore: ProviderStore,
     private val realtimeProviderStore: RealtimeProviderStore,
+    private val sttProviderStore: STTProviderStore,
+    private val ttsProviderStore: TTSProviderStore,
     private val characterStore: CharacterStore,
     private val memoryService: MemoryService,
     private val usageService: UsageService,
     private val storageProvider: PersistentStorageProvider,
-    private val toolbox: Toolbox
+    private val toolbox: Toolbox,
+    private val preferences: Preferences
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val inferenceRuntime = ChatInferenceRuntime(toolbox)
     private var voiceBridge: RealtimeVoiceBridge? = null
+    private var classicBridge: TraditionalVoiceBridge? = null
     private var voiceJob: Job? = null
 
     private val _session = MutableStateFlow(PreviewSession.liveSeed())
@@ -109,6 +114,10 @@ class SessionRuntime(
                     isConnected = true
                 )
             ) }
+
+            if (preferences.autoCompressHistory.value) {
+                inferenceRuntime.compactHistoryIfNeeded(chatHistory, config)
+            }
 
             val systemPrompt = characterStore.systemPrompt(toolbox.toolDescriptions())
             val messagesForInference = mutableListOf(
@@ -186,24 +195,48 @@ class SessionRuntime(
     }
 
     fun startVoiceSession() {
-        LogManager.info("[VOICE] startVoiceSession called", TAG)
-        val config = realtimeProviderStore.activeConfiguration
-        if (config == null) {
-            LogManager.warning("[VOICE] No active realtime provider configured! Please configure a voice provider in Settings.", TAG)
-            return
-        }
-        LogManager.info("[VOICE] using provider=${config.provider.displayName} model=${config.modelID}", TAG)
+        LogManager.info("[VOICE] startVoiceSession called mode=${preferences.voiceMode.value}", TAG)
         syncSubagentChatConfiguration()
         _isVoiceActive.value = true
         _statusText.value = "Connecting…"
 
-        voiceBridge = RealtimeVoiceBridge(context, config, toolbox, characterStore)
         voiceJob = scope.launch {
             try {
-                LogManager.info("[VOICE] starting voice bridge...", TAG)
-                voiceBridge?.start()?.collect { event ->
-                    LogManager.info("[VOICE] event: $event", TAG)
-                    handleVoiceEvent(event)
+                when (preferences.voiceMode.value) {
+                    VoiceMode.REALTIME -> {
+                        val config = realtimeProviderStore.activeConfiguration ?: run {
+                            _statusText.value = "No active realtime provider. Configure one in Settings."
+                            _isVoiceActive.value = false
+                            return@launch
+                        }
+                        LogManager.info("[VOICE] realtime provider=${config.provider.displayName} model=${config.modelID}", TAG)
+                        voiceBridge = RealtimeVoiceBridge(context, config, toolbox, characterStore)
+                        voiceBridge?.start()?.collect { event ->
+                            handleVoiceEvent(event)
+                        }
+                    }
+                    VoiceMode.CLASSIC -> {
+                        val sttConfig = sttProviderStore.activeConfiguration ?: run {
+                            _statusText.value = "No active STT provider. Configure one in Settings."
+                            _isVoiceActive.value = false
+                            return@launch
+                        }
+                        val ttsConfig = ttsProviderStore.activeConfiguration ?: run {
+                            _statusText.value = "No active TTS provider. Configure one in Settings."
+                            _isVoiceActive.value = false
+                            return@launch
+                        }
+                        val chatConfig = providerStore.activeConfiguration ?: run {
+                            _statusText.value = "No active chat provider. Configure one in Settings."
+                            _isVoiceActive.value = false
+                            return@launch
+                        }
+                        LogManager.info("[VOICE] classic stt=${sttConfig.provider.displayName} tts=${ttsConfig.provider.displayName} chat=${chatConfig.provider.displayName}", TAG)
+                        classicBridge = TraditionalVoiceBridge(context, sttConfig, ttsConfig, chatConfig, toolbox, characterStore, preferences)
+                        classicBridge?.start()?.collect { event ->
+                            handleVoiceEvent(event)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 LogManager.error("Voice session error: ${e.message}", "SessionRuntime")
@@ -218,6 +251,8 @@ class SessionRuntime(
         voiceJob?.cancel()
         voiceBridge?.stop()
         voiceBridge = null
+        classicBridge?.stop()
+        classicBridge = null
         _isVoiceActive.value = false
         _statusText.value = ""
         updateSession { it.copy(mode = SessionMode.READY) }

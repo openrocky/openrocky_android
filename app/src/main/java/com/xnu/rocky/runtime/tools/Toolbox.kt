@@ -42,6 +42,8 @@ class Toolbox(
     private val ffmpegService = FFmpegService(context)
     private val healthService = HealthService(context)
     val mountStore = MountStore(context)
+    val timerService = TimerService(context)
+    val mediaPlayerService = MediaPlayerService(context)
     private val builtInToolStore = BuiltInToolStore(context)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -238,6 +240,71 @@ class Toolbox(
                     if (path.contains("..") || path.startsWith("/")) return "Invalid path: must be relative, no '..' allowed"
                     val mount = mountStore.mount(container) ?: return "Mount '$container' not found. Available: ${mountStore.mounts.value.joinToString { it.name }}"
                     mountStore.writeFile(mount, path, content)
+                }
+                "timer" -> {
+                    val action = args["action"]?.jsonPrimitive?.contentOrNull ?: "list"
+                    when (action) {
+                        "start" -> {
+                            val label = args["label"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            val seconds = args["seconds"]?.jsonPrimitive?.longOrNull
+                                ?: args["duration"]?.jsonPrimitive?.longOrNull ?: 0L
+                            if (seconds <= 0) "Timer duration (seconds) must be > 0"
+                            else {
+                                val t = timerService.schedule(label, seconds)
+                                "Timer '${t.label}' set for $seconds seconds. id=${t.id}"
+                            }
+                        }
+                        "cancel" -> {
+                            val id = args["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            if (id.isBlank()) "Missing id"
+                            else if (timerService.cancel(id)) "Cancelled timer $id" else "Timer $id not found"
+                        }
+                        "cancel_all", "clear" -> "Cancelled ${timerService.cancelAll()} timers"
+                        "list" -> {
+                            val list = timerService.list()
+                            if (list.isEmpty()) "No active timers."
+                            else list.joinToString("\n") {
+                                val remaining = ((it.fireAt - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
+                                "- ${it.label} (${remaining}s left, id=${it.id})"
+                            }
+                        }
+                        else -> "Unknown timer action: $action"
+                    }
+                }
+                "media" -> {
+                    val action = args["action"]?.jsonPrimitive?.contentOrNull ?: "status"
+                    when (action) {
+                        "load" -> {
+                            val path = args["path"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            val recursive = args["recursive"]?.jsonPrimitive?.booleanOrNull ?: true
+                            val n = mediaPlayerService.load(path, recursive)
+                            "Loaded $n media items from $path"
+                        }
+                        "play" -> {
+                            val idx = args["index"]?.jsonPrimitive?.intOrNull
+                            val item = mediaPlayerService.play(idx)
+                            if (item == null) "Nothing to play (playlist empty)"
+                            else "Playing ${item.filename}"
+                        }
+                        "pause" -> { mediaPlayerService.pause(); "Paused" }
+                        "resume" -> { mediaPlayerService.resume(); "Resumed" }
+                        "stop" -> { mediaPlayerService.stop(); "Stopped" }
+                        "next" -> mediaPlayerService.next()?.let { "Playing ${it.filename}" } ?: "No next item"
+                        "previous", "prev" -> mediaPlayerService.previous()?.let { "Playing ${it.filename}" } ?: "No previous item"
+                        "mode" -> {
+                            val raw = args["mode"]?.jsonPrimitive?.contentOrNull ?: "sequential"
+                            val parsed = when (raw.lowercase()) {
+                                "loop", "repeat_all" -> MediaPlaybackMode.LOOP
+                                "random", "shuffle" -> MediaPlaybackMode.RANDOM
+                                "repeat_one", "single" -> MediaPlaybackMode.REPEAT_ONE
+                                else -> MediaPlaybackMode.SEQUENTIAL
+                            }
+                            mediaPlayerService.setMode(parsed)
+                            "Playback mode: ${parsed.name.lowercase()}"
+                        }
+                        "status" -> mediaPlayerService.currentStatus()
+                        else -> "Unknown media action: $action"
+                    }
                 }
                 "delegate-task" -> executeDelegateTask(args)
                 "app-exit" -> {
@@ -719,6 +786,47 @@ class Toolbox(
                     }
                 }
                 putJsonArray("required") { add(JsonPrimitive("task")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "timer",
+            description = "Manage countdown timers. Actions: start (requires label + seconds), cancel (id), cancel_all, list.",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("action") {
+                        put("type", JsonPrimitive("string"))
+                        put("enum", buildJsonArray {
+                            add(JsonPrimitive("start")); add(JsonPrimitive("cancel")); add(JsonPrimitive("cancel_all")); add(JsonPrimitive("list"))
+                        })
+                    }
+                    putJsonObject("label") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Timer label")) }
+                    putJsonObject("seconds") { put("type", JsonPrimitive("integer")); put("description", JsonPrimitive("Duration in seconds (for start)")) }
+                    putJsonObject("id") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Timer id (for cancel)")) }
+                }
+                putJsonArray("required") { add(JsonPrimitive("action")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "media",
+            description = "Control the built-in audio/video player. Actions: load (path), play, pause, resume, stop, next, previous, mode, status.",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("action") {
+                        put("type", JsonPrimitive("string"))
+                        put("enum", buildJsonArray {
+                            add(JsonPrimitive("load")); add(JsonPrimitive("play")); add(JsonPrimitive("pause"))
+                            add(JsonPrimitive("resume")); add(JsonPrimitive("stop")); add(JsonPrimitive("next"))
+                            add(JsonPrimitive("previous")); add(JsonPrimitive("mode")); add(JsonPrimitive("status"))
+                        })
+                    }
+                    putJsonObject("path") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Directory to scan for media (for load)")) }
+                    putJsonObject("recursive") { put("type", JsonPrimitive("boolean")); put("description", JsonPrimitive("Recursive scan (for load)")) }
+                    putJsonObject("index") { put("type", JsonPrimitive("integer")); put("description", JsonPrimitive("Playlist index (for play)")) }
+                    putJsonObject("mode") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("sequential, loop, random, repeat_one")) }
+                }
+                putJsonArray("required") { add(JsonPrimitive("action")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(

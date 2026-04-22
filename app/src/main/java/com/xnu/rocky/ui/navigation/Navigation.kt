@@ -15,8 +15,13 @@ import kotlinx.serialization.Serializable
 @Serializable object SettingsRoute
 @Serializable object ProviderInstanceListRoute
 @Serializable object RealtimeProviderInstanceListRoute
+@Serializable object STTProviderInstanceListRoute
+@Serializable object TTSProviderInstanceListRoute
 @Serializable data class ProviderInstanceEditorRoute(val instanceId: String? = null)
 @Serializable data class RealtimeProviderInstanceEditorRoute(val instanceId: String? = null)
+@Serializable data class STTProviderInstanceEditorRoute(val instanceId: String? = null)
+@Serializable data class TTSProviderInstanceEditorRoute(val instanceId: String? = null)
+@Serializable object VoiceModeRoute
 @Serializable object CharacterSettingsRoute
 @Serializable data class CharacterEditorRoute(val characterId: String? = null)
 @Serializable object SoulSettingsRoute

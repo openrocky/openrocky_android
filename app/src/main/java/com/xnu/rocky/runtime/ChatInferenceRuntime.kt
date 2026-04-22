@@ -104,4 +104,63 @@ class ChatInferenceRuntime(
 
         return fullResponse
     }
+
+    /**
+     * Auto-compact conversation history by summarizing older messages when the list grows beyond
+     * [threshold]. Keeps the most recent messages verbatim and replaces the older portion with a
+     * single system message containing a compact summary. Mirrors iOS auto-compression.
+     */
+    suspend fun compactHistoryIfNeeded(
+        history: MutableList<ChatMessage>,
+        config: ProviderConfiguration,
+        threshold: Int = 60
+    ) {
+        val nonTool = history.filter { it.role != "tool" }
+        if (nonTool.size <= threshold) return
+
+        val recentCount = (threshold / 2).coerceAtLeast(10)
+        val toKeep = history.takeLast(recentCount)
+        val toCompact = history.dropLast(recentCount)
+        if (toCompact.size < 5) return
+
+        LogManager.info("[INFER] auto-compacting ${toCompact.size} messages (keeping $recentCount recent)", TAG)
+
+        val conversationText = toCompact.mapNotNull { msg ->
+            val content = msg.content?.take(500) ?: return@mapNotNull null
+            "<message role=\"${msg.role}\">$content</message>"
+        }.joinToString("\n")
+
+        val summaryPrompt = """
+            Summarize this conversation history concisely. Preserve key facts, user preferences,
+            decisions, tool results, and context needed to continue naturally. Output only the summary.
+
+            <conversation>
+            $conversationText
+            </conversation>
+        """.trimIndent()
+
+        val summaryMessages = listOf(
+            ChatMessage(role = "system", content = "You are a conversation summarizer. Output a concise summary."),
+            ChatMessage(role = "user", content = summaryPrompt)
+        )
+
+        val client = ChatClient(config)
+        val buffer = StringBuilder()
+        runCatching {
+            client.streamChat(summaryMessages).collect { delta -> delta.content?.let { buffer.append(it) } }
+        }.onFailure {
+            LogManager.warning("[INFER] auto-compaction failed: ${it.message}", TAG)
+            return
+        }
+        val summary = buffer.toString().trim()
+        if (summary.isEmpty()) {
+            LogManager.warning("[INFER] auto-compaction produced empty summary", TAG)
+            return
+        }
+
+        history.clear()
+        history.add(ChatMessage(role = "system", content = "[Previous conversation summary]\n$summary"))
+        history.addAll(toKeep)
+        LogManager.info("[INFER] auto-compacted to ${history.size} messages (summary: ${summary.length} chars)", TAG)
+    }
 }

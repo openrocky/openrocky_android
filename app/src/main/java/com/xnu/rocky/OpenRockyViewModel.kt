@@ -13,14 +13,19 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.xnu.rocky.providers.ProviderStore
 import com.xnu.rocky.providers.RealtimeProviderStore
+import com.xnu.rocky.providers.STTProviderStore
+import com.xnu.rocky.providers.TTSProviderStore
 import com.xnu.rocky.runtime.*
 import com.xnu.rocky.runtime.skills.CustomSkillStore
 import com.xnu.rocky.runtime.tools.BuiltInToolStore
 import com.xnu.rocky.runtime.tools.Toolbox
+import com.xnu.rocky.runtime.voice.stt.DictationService
 
 class OpenRockyViewModel(application: Application) : AndroidViewModel(application) {
     val providerStore = ProviderStore(application)
     val realtimeProviderStore = RealtimeProviderStore(application)
+    val sttProviderStore = STTProviderStore(application)
+    val ttsProviderStore = TTSProviderStore(application)
     val characterStore = CharacterStore(application)
     val soulStore = SoulStore(application)
     val memoryService = MemoryService(application)
@@ -28,17 +33,22 @@ class OpenRockyViewModel(application: Application) : AndroidViewModel(applicatio
     val storageProvider = PersistentStorageProvider(application)
     val customSkillStore = CustomSkillStore(application)
     val builtInToolStore = BuiltInToolStore(application)
+    val preferences = Preferences(application)
     val toolbox = Toolbox(application, memoryService)
+    val dictationService = DictationService(application)
 
     val sessionRuntime = SessionRuntime(
         context = application,
         providerStore = providerStore,
         realtimeProviderStore = realtimeProviderStore,
+        sttProviderStore = sttProviderStore,
+        ttsProviderStore = ttsProviderStore,
         characterStore = characterStore,
         memoryService = memoryService,
         usageService = usageService,
         storageProvider = storageProvider,
-        toolbox = toolbox
+        toolbox = toolbox,
+        preferences = preferences
     )
 
     private var hasOnboarded: Boolean
