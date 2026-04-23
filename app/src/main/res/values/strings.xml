@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">Rocky</string>
+
+    <!-- Launcher long-press shortcuts -->
+    <string name="shortcut_voice_short">Voice</string>
+    <string name="shortcut_voice_long">Start a voice conversation</string>
+    <string name="shortcut_new_chat_short">New Chat</string>
+    <string name="shortcut_new_chat_long">Start a new chat</string>
+    <string name="shortcut_continue_short">Continue</string>
+    <string name="shortcut_continue_long">Continue the last conversation</string>
 </resources>

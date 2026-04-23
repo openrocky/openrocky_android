@@ -10,6 +10,7 @@
 package com.xnu.rocky
 
 import android.Manifest
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -39,16 +40,54 @@ import com.xnu.rocky.ui.theme.OpenRockyTheme
 import com.xnu.rocky.ui.theme.OpenRockyPalette
 import kotlinx.coroutines.launch
 
+/** External entry-point actions (system assist button, launcher shortcuts, share sheet). */
+sealed class LaunchRequest {
+    /** Assist / voice-command intent OR the `start_voice` launcher shortcut. Auto-opens voice session. */
+    data object StartVoice : LaunchRequest()
+    /** `continue_last` launcher shortcut. */
+    data object ContinueLast : LaunchRequest()
+    /** Shared text from another app (ACTION_SEND). Pre-fills the chat composer. */
+    data class SharedText(val text: String) : LaunchRequest()
+}
+
+const val ACTION_START_VOICE = "com.xnu.rocky.action.START_VOICE"
+const val ACTION_NEW_CHAT = "com.xnu.rocky.action.NEW_CHAT"
+const val ACTION_CONTINUE_LAST = "com.xnu.rocky.action.CONTINUE_LAST"
+
+private fun Intent.toLaunchRequest(): LaunchRequest? = when (action) {
+    Intent.ACTION_ASSIST, Intent.ACTION_VOICE_COMMAND, ACTION_START_VOICE -> LaunchRequest.StartVoice
+    ACTION_CONTINUE_LAST -> LaunchRequest.ContinueLast
+    Intent.ACTION_SEND -> {
+        val shared = getStringExtra(Intent.EXTRA_TEXT)
+            ?: getStringExtra(Intent.EXTRA_SUBJECT)
+        if (!shared.isNullOrBlank()) LaunchRequest.SharedText(shared) else null
+    }
+    // ACTION_NEW_CHAT and plain LAUNCHER starts have no post-launch work to do — the normal home screen handles them.
+    else -> null
+}
+
 class MainActivity : ComponentActivity() {
+    private val pendingLaunchRequest = mutableStateOf<LaunchRequest?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        pendingLaunchRequest.value = intent?.toLaunchRequest()
 
         setContent {
             OpenRockyTheme {
-                OpenRockyMainApp()
+                OpenRockyMainApp(
+                    pendingLaunchRequest = pendingLaunchRequest.value,
+                    onLaunchRequestConsumed = { pendingLaunchRequest.value = null }
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // `launchMode=singleTask` routes repeat invocations (assist long-press, shortcut tap, share) here.
+        intent.toLaunchRequest()?.let { pendingLaunchRequest.value = it }
     }
 }
 
@@ -67,7 +106,10 @@ private fun startDictation(
 }
 
 @Composable
-fun OpenRockyMainApp() {
+fun OpenRockyMainApp(
+    pendingLaunchRequest: LaunchRequest? = null,
+    onLaunchRequestConsumed: () -> Unit = {}
+) {
     val viewModel: OpenRockyViewModel = viewModel()
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -139,6 +181,29 @@ fun OpenRockyMainApp() {
             currentConversationId = conversations.firstOrNull()?.id
             currentConversationId?.let { viewModel.sessionRuntime.setConversation(it) }
         }
+    }
+
+    // External launch entry points: assist intent, launcher shortcuts, share sheet.
+    LaunchedEffect(pendingLaunchRequest) {
+        val req = pendingLaunchRequest ?: return@LaunchedEffect
+        when (req) {
+            is LaunchRequest.StartVoice -> {
+                showVoiceOverlay = true
+                if (PermissionHelper.hasMicrophone(context)) {
+                    viewModel.sessionRuntime.startVoiceSession()
+                } else {
+                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
+            is LaunchRequest.ContinueLast -> {
+                // Default "resume last conversation" is already what the app does on launch; nothing extra to do.
+            }
+            is LaunchRequest.SharedText -> {
+                // Reuse the dictation pre-fill channel so the composer receives the shared text.
+                dictationResult = req.text
+            }
+        }
+        onLaunchRequestConsumed()
     }
 
     Box(modifier = Modifier.fillMaxSize().background(OpenRockyPalette.background)) {
