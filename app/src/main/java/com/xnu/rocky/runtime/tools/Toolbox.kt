@@ -109,6 +109,27 @@ class Toolbox(
                     delaySeconds = args["delay_seconds"]?.jsonPrimitive?.intOrNull ?: 0,
                     triggerDate = args["trigger_date"]?.jsonPrimitive?.contentOrNull
                 )
+                "notifications-read" -> {
+                    if (!NotificationInboxStore.granted.value) {
+                        "Notification listener access not granted. Ask the user to enable Rocky in Settings → Notifications → Device & app notifications → Notification access."
+                    } else {
+                        val limit = args["limit"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 64) ?: 20
+                        val packageFilter = args["package"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                        val entries = NotificationInboxStore.snapshot(limit = limit, packageFilter = packageFilter)
+                        if (entries.isEmpty()) {
+                            if (packageFilter != null) "No notifications from $packageFilter."
+                            else "No notifications captured yet."
+                        } else {
+                            val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                            entries.joinToString("\n") { e ->
+                                val app = e.appLabel ?: e.packageName
+                                val ts = fmt.format(java.util.Date(e.postedAtMs))
+                                val body = if (e.text.isBlank()) e.title else "${e.title}: ${e.text}"
+                                "[$ts] $app — $body"
+                            }
+                        }
+                    }
+                }
                 "android-calendar-list" -> calendarService.listEvents(
                     daysAhead = args["days_ahead"]?.jsonPrimitive?.intOrNull ?: 7
                 )
@@ -470,6 +491,17 @@ class Toolbox(
                     putJsonObject("delay_seconds") { put("type", JsonPrimitive("number")); put("description", JsonPrimitive("Optional delay in seconds from now.")) }
                 }
                 putJsonArray("required") { add(JsonPrimitive("title")) }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "notifications-read",
+            description = "Read the user's recent system notifications (most recent first). Requires the user to have enabled Notification access for Rocky in Android Settings. Use for 'what did I miss?' or per-app summaries.",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("limit") { put("type", JsonPrimitive("number")); put("description", JsonPrimitive("Max entries to return (default 20, cap 64).")) }
+                    putJsonObject("package") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Optional package name to filter (e.g. com.whatsapp, com.tencent.mm).")) }
+                }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(
