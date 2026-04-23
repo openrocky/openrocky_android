@@ -12,4 +12,9 @@
     <!-- Quick Settings tile -->
     <string name="tile_voice_label">Rocky Voice</string>
     <string name="tile_voice_description">Start a voice conversation with Rocky</string>
+
+    <!-- Home screen widget -->
+    <string name="widget_voice_label">Rocky</string>
+    <string name="widget_voice_caption">Tap to talk</string>
+    <string name="widget_voice_description">One-tap voice session</string>
 </resources>
