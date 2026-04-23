@@ -40,29 +40,50 @@ import com.xnu.rocky.ui.theme.OpenRockyTheme
 import com.xnu.rocky.ui.theme.OpenRockyPalette
 import kotlinx.coroutines.launch
 
-/** External entry-point actions (system assist button, launcher shortcuts, share sheet). */
+/**
+ * External entry-point actions. Rocky exposes these as explicit manifest intent-filters so
+ * automation apps (Tasker, Automate, MacroDroid, Home Assistant) and system surfaces (NFC tags,
+ * Quick Settings tile, launcher shortcuts, assist button, share sheet) can all drive Rocky with
+ * one consistent contract. Example — dispatch from adb or Tasker:
+ *
+ *     adb shell am start -a com.xnu.rocky.action.SEND_PROMPT \
+ *         -e prompt "Summarize my calendar today" \
+ *         -n com.xnu.rocky/.MainActivity
+ *
+ * This Android-only automation surface has no iOS equivalent.
+ */
 sealed class LaunchRequest {
     /** Assist / voice-command intent OR the `start_voice` launcher shortcut. Auto-opens voice session. */
     data object StartVoice : LaunchRequest()
-    /** `continue_last` launcher shortcut. */
+    /** Start a fresh chat conversation (shortcut, NFC tag, Tasker). */
+    data object NewChat : LaunchRequest()
+    /** `continue_last` launcher shortcut. Default behavior — resume most recent conversation. */
     data object ContinueLast : LaunchRequest()
     /** Shared text from another app (ACTION_SEND). Pre-fills the chat composer. */
     data class SharedText(val text: String) : LaunchRequest()
+    /** Automation-sent prompt. Treated as if the user typed and sent the text — triggers chat reply. */
+    data class SendPrompt(val text: String) : LaunchRequest()
 }
 
 const val ACTION_START_VOICE = "com.xnu.rocky.action.START_VOICE"
 const val ACTION_NEW_CHAT = "com.xnu.rocky.action.NEW_CHAT"
 const val ACTION_CONTINUE_LAST = "com.xnu.rocky.action.CONTINUE_LAST"
+const val ACTION_SEND_PROMPT = "com.xnu.rocky.action.SEND_PROMPT"
+const val EXTRA_PROMPT = "prompt"
 
 private fun Intent.toLaunchRequest(): LaunchRequest? = when (action) {
     Intent.ACTION_ASSIST, Intent.ACTION_VOICE_COMMAND, ACTION_START_VOICE -> LaunchRequest.StartVoice
+    ACTION_NEW_CHAT -> LaunchRequest.NewChat
     ACTION_CONTINUE_LAST -> LaunchRequest.ContinueLast
+    ACTION_SEND_PROMPT -> {
+        val prompt = getStringExtra(EXTRA_PROMPT) ?: getStringExtra(Intent.EXTRA_TEXT)
+        if (!prompt.isNullOrBlank()) LaunchRequest.SendPrompt(prompt) else null
+    }
     Intent.ACTION_SEND -> {
         val shared = getStringExtra(Intent.EXTRA_TEXT)
             ?: getStringExtra(Intent.EXTRA_SUBJECT)
         if (!shared.isNullOrBlank()) LaunchRequest.SharedText(shared) else null
     }
-    // ACTION_NEW_CHAT and plain LAUNCHER starts have no post-launch work to do — the normal home screen handles them.
     else -> null
 }
 
@@ -183,7 +204,7 @@ fun OpenRockyMainApp(
         }
     }
 
-    // External launch entry points: assist intent, launcher shortcuts, share sheet.
+    // External launch entry points: assist intent, launcher shortcuts, share sheet, automation (Tasker/NFC).
     LaunchedEffect(pendingLaunchRequest) {
         val req = pendingLaunchRequest ?: return@LaunchedEffect
         when (req) {
@@ -195,12 +216,19 @@ fun OpenRockyMainApp(
                     micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                 }
             }
+            is LaunchRequest.NewChat -> {
+                currentConversationId = viewModel.sessionRuntime.newConversation()
+            }
             is LaunchRequest.ContinueLast -> {
-                // Default "resume last conversation" is already what the app does on launch; nothing extra to do.
+                // Default "resume last conversation" is what the app already does on launch.
             }
             is LaunchRequest.SharedText -> {
-                // Reuse the dictation pre-fill channel so the composer receives the shared text.
+                // Share-sheet text: pre-fill composer (user still reviews + taps send).
                 dictationResult = req.text
+            }
+            is LaunchRequest.SendPrompt -> {
+                // Automation-driven prompt: treat as if the user sent it — fires a reply immediately.
+                viewModel.sessionRuntime.sendTextMessage(req.text)
             }
         }
         onLaunchRequestConsumed()

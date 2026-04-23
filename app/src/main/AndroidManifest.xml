@@ -57,7 +57,8 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
 
-            <!-- Launcher long-press shortcuts. -->
+            <!-- Launcher long-press shortcuts, Quick Settings tile, home widget, and automation apps
+                 (Tasker, Automate, MacroDroid, Home Assistant, NFC tags) trigger these. -->
             <intent-filter>
                 <action android:name="com.xnu.rocky.action.START_VOICE" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -68,6 +69,12 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="com.xnu.rocky.action.CONTINUE_LAST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Send a text prompt to the active conversation and fire a reply.
+                 Extras: "prompt" (preferred) or "android.intent.extra.TEXT". -->
+            <intent-filter>
+                <action android:name="com.xnu.rocky.action.SEND_PROMPT" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
