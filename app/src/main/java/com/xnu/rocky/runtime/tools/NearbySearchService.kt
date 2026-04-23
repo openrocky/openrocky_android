@@ -24,11 +24,18 @@ class NearbySearchService(private val context: Context) {
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    suspend fun search(query: String, latitude: Double, longitude: Double): String = withContext(Dispatchers.IO) {
+    suspend fun search(query: String, latitude: Double?, longitude: Double?): String = withContext(Dispatchers.IO) {
         try {
-            // Use Nominatim (OpenStreetMap) for free POI search
+            // Use Nominatim (OpenStreetMap) for free POI search.
+            // When caller doesn't supply coordinates, fall back to an unlocated query (matches iOS behavior
+            // where `nearby-search` accepts optional latitude/longitude and uses the current location if omitted).
             val encoded = URLEncoder.encode(query, "UTF-8")
-            val url = "https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=10&lat=$latitude&lon=$longitude&addressdetails=1"
+            val url = buildString {
+                append("https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=10&addressdetails=1")
+                if (latitude != null && longitude != null) {
+                    append("&lat=$latitude&lon=$longitude")
+                }
+            }
             val request = Request.Builder()
                 .url(url)
                 .header("User-Agent", "OpenRocky/1.0")

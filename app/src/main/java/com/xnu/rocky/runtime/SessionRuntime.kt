@@ -328,7 +328,25 @@ class SessionRuntime(
                 _statusText.value = "Error: ${event.message}"
                 LogManager.error(event.message, "Voice")
             }
+            is RealtimeEvent.ErrorDetailed -> handleVoiceError(event.detail)
             is RealtimeEvent.AssistantAudioChunk -> {}
+            is RealtimeEvent.AssistantAudioDone -> {}
+        }
+    }
+
+    private fun handleVoiceError(detail: com.xnu.rocky.runtime.voice.VoiceError) {
+        val prefix = when (detail.severity) {
+            com.xnu.rocky.runtime.voice.VoiceErrorSeverity.Transient -> "…"
+            com.xnu.rocky.runtime.voice.VoiceErrorSeverity.UserAction -> "!"
+            com.xnu.rocky.runtime.voice.VoiceErrorSeverity.Fatal -> "⚠"
+        }
+        LogManager.error(
+            "Session error [${detail.severity}] action=${detail.actionHint}: ${detail.message}",
+            "Voice"
+        )
+        _statusText.value = "$prefix ${detail.message}"
+        if (detail.severity == com.xnu.rocky.runtime.voice.VoiceErrorSeverity.Fatal) {
+            updateSession { it.copy(mode = SessionMode.READY) }
         }
     }
 

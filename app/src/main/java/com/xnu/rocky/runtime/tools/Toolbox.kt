@@ -106,7 +106,8 @@ class Toolbox(
                 "notification-schedule" -> notificationService.schedule(
                     title = args["title"]?.jsonPrimitive?.contentOrNull ?: "Rocky",
                     body = args["body"]?.jsonPrimitive?.contentOrNull ?: "",
-                    delaySeconds = args["delay_seconds"]?.jsonPrimitive?.intOrNull ?: 0
+                    delaySeconds = args["delay_seconds"]?.jsonPrimitive?.intOrNull ?: 0,
+                    triggerDate = args["trigger_date"]?.jsonPrimitive?.contentOrNull
                 )
                 "android-calendar-list" -> calendarService.listEvents(
                     daysAhead = args["days_ahead"]?.jsonPrimitive?.intOrNull ?: 7
@@ -121,13 +122,18 @@ class Toolbox(
                     query = args["query"]?.jsonPrimitive?.contentOrNull ?: ""
                 )
                 "android-alarm" -> {
-                    val time = args["time"]?.jsonPrimitive?.contentOrNull ?: ""
-                    AlarmService.setAlarm(context, time)
+                    val time = args["scheduled_at"]?.jsonPrimitive?.contentOrNull
+                        ?: args["time"]?.jsonPrimitive?.contentOrNull
+                        ?: ""
+                    val title = args["title"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    AlarmService.setAlarm(context, time, title)
                 }
                 "crypto" -> cryptoService.execute(
                     operation = args["operation"]?.jsonPrimitive?.contentOrNull ?: "",
-                    input = args["input"]?.jsonPrimitive?.contentOrNull ?: "",
-                    key = args["key"]?.jsonPrimitive?.contentOrNull
+                    data = args["data"]?.jsonPrimitive?.contentOrNull
+                        ?: args["input"]?.jsonPrimitive?.contentOrNull ?: "",
+                    key = args["key"]?.jsonPrimitive?.contentOrNull,
+                    iv = args["iv"]?.jsonPrimitive?.contentOrNull
                 )
                 "open-url" -> {
                     val url = args["url"]?.jsonPrimitive?.contentOrNull ?: ""
@@ -180,8 +186,14 @@ class Toolbox(
                 }
                 "nearby-search" -> {
                     val query = args["query"]?.jsonPrimitive?.contentOrNull ?: ""
-                    val lat = args["latitude"]?.jsonPrimitive?.doubleOrNull ?: 0.0
-                    val lon = args["longitude"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                    var lat = args["latitude"]?.jsonPrimitive?.doubleOrNull
+                    var lon = args["longitude"]?.jsonPrimitive?.doubleOrNull
+                    if (lat == null || lon == null) {
+                        locationService.lastKnownLatLng()?.let { (fixLat, fixLon) ->
+                            lat = fixLat
+                            lon = fixLon
+                        }
+                    }
                     nearbySearchService.search(query, lat, lon)
                 }
                 "browser-open" -> {
@@ -244,9 +256,10 @@ class Toolbox(
                 "timer" -> {
                     val action = args["action"]?.jsonPrimitive?.contentOrNull ?: "list"
                     when (action) {
-                        "start" -> {
+                        "create", "start" -> {
                             val label = args["label"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                            val seconds = args["seconds"]?.jsonPrimitive?.longOrNull
+                            val seconds = args["duration_seconds"]?.jsonPrimitive?.longOrNull
+                                ?: args["seconds"]?.jsonPrimitive?.longOrNull
                                 ?: args["duration"]?.jsonPrimitive?.longOrNull ?: 0L
                             if (seconds <= 0) "Timer duration (seconds) must be > 0"
                             else {
@@ -447,15 +460,16 @@ class Toolbox(
         )),
         ToolDefinition(function = ToolFunctionDef(
             name = "notification-schedule",
-            description = "Schedule a local notification",
+            description = "Schedule a local notification. Can trigger at a specific time or after a delay.",
             parameters = buildJsonObject {
                 put("type", JsonPrimitive("object"))
                 putJsonObject("properties") {
-                    putJsonObject("title") { put("type", JsonPrimitive("string")) }
-                    putJsonObject("body") { put("type", JsonPrimitive("string")) }
-                    putJsonObject("delay_seconds") { put("type", JsonPrimitive("integer")); put("description", JsonPrimitive("Seconds until notification")) }
+                    putJsonObject("title") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Notification title.")) }
+                    putJsonObject("body") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Optional notification body text.")) }
+                    putJsonObject("trigger_date") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Optional ISO-8601 datetime to trigger the notification.")) }
+                    putJsonObject("delay_seconds") { put("type", JsonPrimitive("number")); put("description", JsonPrimitive("Optional delay in seconds from now.")) }
                 }
-                putJsonArray("required") { add(JsonPrimitive("title")); add(JsonPrimitive("body")) }
+                putJsonArray("required") { add(JsonPrimitive("title")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(
@@ -495,26 +509,38 @@ class Toolbox(
         )),
         ToolDefinition(function = ToolFunctionDef(
             name = "android-alarm",
-            description = "Set an alarm on the device",
+            description = "Create a real device alarm at one exact time. Use this only after the user gave a precise time.",
             parameters = buildJsonObject {
                 put("type", JsonPrimitive("object"))
                 putJsonObject("properties") {
-                    putJsonObject("time") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Time in HH:mm format")) }
+                    putJsonObject("title") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Short label for the alarm.")) }
+                    putJsonObject("scheduled_at") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Exact ISO-8601 date-time in the user's local timezone (e.g. 2026-04-23T07:30). HH:mm is also accepted for convenience.")) }
                 }
-                putJsonArray("required") { add(JsonPrimitive("time")) }
+                putJsonArray("required") { add(JsonPrimitive("scheduled_at")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(
             name = "crypto",
-            description = "Cryptographic operations: sha256, md5, hmac-sha256, base64-encode, base64-decode",
+            description = "Perform cryptographic operations: HMAC-SHA256, SHA256 hash, MD5 hash, AES-128-CBC encrypt/decrypt, base64 encode/decode. Use this when a skill or API requires signing requests, generating tokens, or encrypting data.",
             parameters = buildJsonObject {
                 put("type", JsonPrimitive("object"))
                 putJsonObject("properties") {
-                    putJsonObject("operation") { put("type", JsonPrimitive("string")); put("enum", buildJsonArray { add(JsonPrimitive("sha256")); add(JsonPrimitive("md5")); add(JsonPrimitive("hmac-sha256")); add(JsonPrimitive("base64-encode")); add(JsonPrimitive("base64-decode")) }) }
-                    putJsonObject("input") { put("type", JsonPrimitive("string")) }
-                    putJsonObject("key") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Key for HMAC operations")) }
+                    putJsonObject("operation") {
+                        put("type", JsonPrimitive("string"))
+                        put("description", JsonPrimitive("Operation: hmac_sha256, sha256, md5, aes_encrypt, aes_decrypt, base64_encode, base64_decode."))
+                        put("enum", buildJsonArray {
+                            add(JsonPrimitive("sha256")); add(JsonPrimitive("md5"))
+                            add(JsonPrimitive("hmac_sha256")); add(JsonPrimitive("hmac-sha256"))
+                            add(JsonPrimitive("aes_encrypt")); add(JsonPrimitive("aes_decrypt"))
+                            add(JsonPrimitive("base64_encode")); add(JsonPrimitive("base64-encode"))
+                            add(JsonPrimitive("base64_decode")); add(JsonPrimitive("base64-decode"))
+                        })
+                    }
+                    putJsonObject("data") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("The input data (text, or hex-encoded for decrypt).")) }
+                    putJsonObject("key") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Key for HMAC or AES operations (hex-encoded, or raw UTF-8 as fallback).")) }
+                    putJsonObject("iv") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Initialization vector for AES-CBC (hex-encoded, 16 bytes).")) }
                 }
-                putJsonArray("required") { add(JsonPrimitive("operation")); add(JsonPrimitive("input")) }
+                putJsonArray("required") { add(JsonPrimitive("operation")); add(JsonPrimitive("data")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(
@@ -610,15 +636,15 @@ class Toolbox(
         )),
         ToolDefinition(function = ToolFunctionDef(
             name = "nearby-search",
-            description = "Search for nearby places, businesses, or points of interest",
+            description = "Search for nearby places, businesses, or points of interest. Returns name, address, coordinates.",
             parameters = buildJsonObject {
                 put("type", JsonPrimitive("object"))
                 putJsonObject("properties") {
-                    putJsonObject("query") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("What to search for (e.g. 'coffee shop', 'restaurant', 'hospital')")) }
-                    putJsonObject("latitude") { put("type", JsonPrimitive("number")) }
-                    putJsonObject("longitude") { put("type", JsonPrimitive("number")) }
+                    putJsonObject("query") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("What to search for (e.g. 'coffee shop', 'gas station', 'pharmacy').")) }
+                    putJsonObject("latitude") { put("type", JsonPrimitive("number")); put("description", JsonPrimitive("Optional center latitude. Uses current location if omitted.")) }
+                    putJsonObject("longitude") { put("type", JsonPrimitive("number")); put("description", JsonPrimitive("Optional center longitude.")) }
                 }
-                putJsonArray("required") { add(JsonPrimitive("query")); add(JsonPrimitive("latitude")); add(JsonPrimitive("longitude")) }
+                putJsonArray("required") { add(JsonPrimitive("query")) }
             }
         )),
         ToolDefinition(function = ToolFunctionDef(
@@ -790,19 +816,20 @@ class Toolbox(
         )),
         ToolDefinition(function = ToolFunctionDef(
             name = "timer",
-            description = "Manage countdown timers. Actions: start (requires label + seconds), cancel (id), cancel_all, list.",
+            description = "In-app countdown timer. Actions: create (needs duration_seconds; optional label), list (returns active timers), cancel (needs id), cancel_all. Prefer this over android-alarm when the user says 'in N minutes' rather than an absolute time.",
             parameters = buildJsonObject {
                 put("type", JsonPrimitive("object"))
                 putJsonObject("properties") {
                     putJsonObject("action") {
                         put("type", JsonPrimitive("string"))
+                        put("description", JsonPrimitive("One of: create, list, cancel, cancel_all."))
                         put("enum", buildJsonArray {
-                            add(JsonPrimitive("start")); add(JsonPrimitive("cancel")); add(JsonPrimitive("cancel_all")); add(JsonPrimitive("list"))
+                            add(JsonPrimitive("create")); add(JsonPrimitive("cancel")); add(JsonPrimitive("cancel_all")); add(JsonPrimitive("list"))
                         })
                     }
-                    putJsonObject("label") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Timer label")) }
-                    putJsonObject("seconds") { put("type", JsonPrimitive("integer")); put("description", JsonPrimitive("Duration in seconds (for start)")) }
-                    putJsonObject("id") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Timer id (for cancel)")) }
+                    putJsonObject("label") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Short label for the timer (e.g. 'tea', 'break'). Optional.")) }
+                    putJsonObject("duration_seconds") { put("type", JsonPrimitive("number")); put("description", JsonPrimitive("Countdown length in seconds (for create).")) }
+                    putJsonObject("id") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Timer ID to cancel.")) }
                 }
                 putJsonArray("required") { add(JsonPrimitive("action")) }
             }

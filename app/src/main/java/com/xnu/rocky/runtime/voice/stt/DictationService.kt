@@ -25,10 +25,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.ByteArrayOutputStream
 import kotlin.math.sqrt
 
+/** Dictation mode: auto-VAD (tap to start, silence to end) or push-to-talk (hold to record, release to end). */
+enum class DictationMode { AutoVAD, PushToTalk }
+
 /**
  * Inline dictation service: record mic → STT → return text to the chat composer.
- * Tap to start; recording stops on silence (1.5s) or after 30s max. Parallels
- * OpenRockyDictationService on iOS.
+ *
+ * Supports two modes:
+ * - **AutoVAD**: Tap to start, automatically stops on silence (1.5s) or after 30s max.
+ * - **PushToTalk**: Hold to record, release (via [requestStop]) to stop and transcribe.
+ *
+ * Parallels OpenRockyDictationService on iOS.
  */
 class DictationService(private val context: Context) {
     companion object {
@@ -48,12 +55,16 @@ class DictationService(private val context: Context) {
 
     private var job: Job? = null
 
+    /** Whether stop has been requested externally (push-to-talk release). */
+    @Volatile private var stopRequested = false
+
     fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     fun startDictation(
         configuration: STTProviderConfiguration,
         scope: CoroutineScope,
+        mode: DictationMode = DictationMode.AutoVAD,
         onResult: (String) -> Unit,
         onError: (String) -> Unit
     ) {
@@ -68,9 +79,10 @@ class DictationService(private val context: Context) {
         }
 
         _isRecording.value = true
+        stopRequested = false
         job = scope.launch(Dispatchers.IO) {
             try {
-                val pcm = recordWithVAD()
+                val pcm = recordWithVAD(mode)
                 val client = STTClientFactory.make(configuration)
                 val text = client.transcribe(pcm).trim()
                 withContext(Dispatchers.Main) {
@@ -99,11 +111,17 @@ class DictationService(private val context: Context) {
     fun stopDictation() {
         job?.cancel()
         job = null
+        stopRequested = false
         _isRecording.value = false
         _audioLevel.value = 0f
     }
 
-    private suspend fun recordWithVAD(): ByteArray = withContext(Dispatchers.IO) {
+    /** Request the recording to stop (used for push-to-talk release). */
+    fun requestStop() {
+        stopRequested = true
+    }
+
+    private suspend fun recordWithVAD(mode: DictationMode): ByteArray = withContext(Dispatchers.IO) {
         val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             .coerceAtLeast(4096)
         val recorder = AudioRecord(
@@ -114,6 +132,7 @@ class DictationService(private val context: Context) {
             minBuf * 2
         )
         recorder.startRecording()
+        LogManager.info("Dictation: recording started (mode=$mode)", TAG)
         val out = ByteArrayOutputStream()
         val chunkSize = SAMPLE_RATE * CHUNK_MS / 1000 * 2
         val buf = ByteArray(chunkSize)
@@ -130,6 +149,17 @@ class DictationService(private val context: Context) {
                 val rms = computeRMS(chunk)
                 _audioLevel.value = (rms / 5000.0).coerceIn(0.0, 1.0).toFloat()
                 out.write(chunk)
+
+                // Push-to-talk: stop when release is signaled; skip silence detection.
+                if (mode == DictationMode.PushToTalk) {
+                    if (stopRequested) {
+                        LogManager.info("Dictation: push-to-talk released, stopping", TAG)
+                        break
+                    }
+                    continue
+                }
+
+                // Auto-VAD: detect silence after speech has been heard.
                 if (rms > SPEECH_THRESHOLD) {
                     hasSpeech = true
                     silent = 0

@@ -19,6 +19,31 @@ sealed class RealtimeEvent {
     data class AssistantTranscriptDelta(val text: String) : RealtimeEvent()
     data class AssistantTranscriptFinal(val text: String) : RealtimeEvent()
     data class AssistantAudioChunk(val pcmData: ByteArray = ByteArray(0)) : RealtimeEvent()
+    data object AssistantAudioDone : RealtimeEvent()
     data class ToolCallRequested(val name: String, val arguments: String, val callID: String) : RealtimeEvent()
+
+    /** Free-form error string. Kept for backwards-compat with existing call sites.
+     *  New code should prefer [ErrorDetailed] so the UI can map severity to the right affordance. */
     data class Error(val message: String) : RealtimeEvent()
+    data class ErrorDetailed(val detail: VoiceError) : RealtimeEvent()
 }
+
+/** Lifecycle classification of a voice-session error. Drives UI affordances:
+ *  transient → silently log + status tick; userAction → blocking prompt; fatal → kill switch. */
+enum class VoiceErrorSeverity {
+    /** Runtime is already recovering (reconnect in progress, retry scheduled). Just surface status. */
+    Transient,
+    /** Session is alive but blocked until the user acts (re-login, open settings, switch provider). */
+    UserAction,
+    /** Session can't recover. User must restart the voice session. */
+    Fatal
+}
+
+/** Actionable hint the UI can map to a button ("Open Settings", "Reconfigure", "Retry"). */
+enum class VoiceErrorAction { OpenSettings, ReconfigureProvider, Retry, None }
+
+data class VoiceError(
+    val severity: VoiceErrorSeverity,
+    val message: String,
+    val actionHint: VoiceErrorAction = VoiceErrorAction.None
+)

@@ -106,7 +106,11 @@ class TraditionalVoiceBridge(
                 minBuf * 2
             )
         } catch (e: SecurityException) {
-            sendEvent(RealtimeEvent.Error("Microphone permission denied"))
+            sendEvent(RealtimeEvent.ErrorDetailed(VoiceError(
+                severity = VoiceErrorSeverity.UserAction,
+                message = "Microphone permission denied",
+                actionHint = VoiceErrorAction.OpenSettings
+            )))
             close()
             return@callbackFlow
         }
@@ -301,6 +305,7 @@ class TraditionalVoiceBridge(
 
         isPlayingTTS = false
         if (!bargeInSignal) {
+            send(RealtimeEvent.AssistantAudioDone)
             send(RealtimeEvent.Status("Listening..."))
         }
         isProcessing = false

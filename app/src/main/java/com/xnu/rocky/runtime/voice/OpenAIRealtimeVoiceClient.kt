@@ -86,9 +86,19 @@ class OpenAIRealtimeVoiceClient(
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
                 LogManager.info("ICE connection state: $state", TAG)
                 when (state) {
-                    PeerConnection.IceConnectionState.FAILED,
                     PeerConnection.IceConnectionState.DISCONNECTED -> {
-                        emitEvent?.invoke(RealtimeEvent.Error("WebRTC connection ${state.name.lowercase()}"))
+                        emitEvent?.invoke(RealtimeEvent.ErrorDetailed(VoiceError(
+                            severity = VoiceErrorSeverity.Transient,
+                            message = "WebRTC disconnected — retrying…",
+                            actionHint = VoiceErrorAction.Retry
+                        )))
+                    }
+                    PeerConnection.IceConnectionState.FAILED -> {
+                        emitEvent?.invoke(RealtimeEvent.ErrorDetailed(VoiceError(
+                            severity = VoiceErrorSeverity.Fatal,
+                            message = "WebRTC connection failed",
+                            actionHint = VoiceErrorAction.Retry
+                        )))
                     }
                     else -> {}
                 }
@@ -203,7 +213,24 @@ class OpenAIRealtimeVoiceClient(
             override fun onResponse(call: Call, response: Response) {
                 if (!response.isSuccessful) {
                     val body = response.body?.string() ?: ""
-                    emitEvent?.invoke(RealtimeEvent.Error("OpenAI returned ${response.code}: $body"))
+                    val detail = when (response.code) {
+                        401, 403 -> VoiceError(
+                            severity = VoiceErrorSeverity.UserAction,
+                            message = "OpenAI authentication failed (${response.code}). Check your API key.",
+                            actionHint = VoiceErrorAction.ReconfigureProvider
+                        )
+                        in 500..599 -> VoiceError(
+                            severity = VoiceErrorSeverity.Transient,
+                            message = "OpenAI server error (${response.code}). Retrying may help.",
+                            actionHint = VoiceErrorAction.Retry
+                        )
+                        else -> VoiceError(
+                            severity = VoiceErrorSeverity.Fatal,
+                            message = "OpenAI returned ${response.code}: $body",
+                            actionHint = VoiceErrorAction.ReconfigureProvider
+                        )
+                    }
+                    emitEvent?.invoke(RealtimeEvent.ErrorDetailed(detail))
                     return
                 }
 
@@ -256,6 +283,9 @@ class OpenAIRealtimeVoiceClient(
                 "response.audio_transcript.done" -> {
                     val transcript = event["transcript"]?.jsonPrimitive?.contentOrNull ?: ""
                     emitEvent?.invoke(RealtimeEvent.AssistantTranscriptFinal(transcript))
+                }
+                "response.audio.done" -> {
+                    emitEvent?.invoke(RealtimeEvent.AssistantAudioDone)
                 }
                 "response.function_call_arguments.done" -> {
                     val name = event["name"]?.jsonPrimitive?.contentOrNull ?: ""

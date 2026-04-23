@@ -15,6 +15,10 @@ import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.delay
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 class NotificationService(private val context: Context) {
     companion object {
@@ -26,9 +30,14 @@ class NotificationService(private val context: Context) {
         createChannel()
     }
 
-    suspend fun schedule(title: String, body: String, delaySeconds: Int): String {
-        if (delaySeconds > 0) {
-            delay(delaySeconds * 1000L)
+    /**
+     * Schedule a local notification. Supply either [delaySeconds] (relative) or [triggerDate]
+     * (ISO-8601 absolute — matches iOS `notification-schedule`). If both are given, [triggerDate] wins.
+     */
+    suspend fun schedule(title: String, body: String, delaySeconds: Int, triggerDate: String? = null): String {
+        val computedDelayMs = computeDelayMs(triggerDate, delaySeconds)
+        if (computedDelayMs > 0) {
+            delay(computedDelayMs)
         }
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -42,6 +51,22 @@ class NotificationService(private val context: Context) {
 
         manager.notify(System.currentTimeMillis().toInt(), notification)
         return "Notification sent: $title"
+    }
+
+    private fun computeDelayMs(triggerDate: String?, delaySeconds: Int): Long {
+        val iso = triggerDate?.trim().orEmpty()
+        if (iso.isNotEmpty()) {
+            val epochMs =
+                runCatching { OffsetDateTime.parse(iso).toInstant().toEpochMilli() }.getOrNull()
+                    ?: runCatching { ZonedDateTime.parse(iso).toInstant().toEpochMilli() }.getOrNull()
+                    ?: runCatching {
+                        LocalDateTime.parse(iso).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    }.getOrNull()
+            if (epochMs != null) {
+                return (epochMs - System.currentTimeMillis()).coerceAtLeast(0)
+            }
+        }
+        return delaySeconds.coerceAtLeast(0) * 1000L
     }
 
     private fun createChannel() {

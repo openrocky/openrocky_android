@@ -20,6 +20,21 @@ import java.util.Locale
 
 class LocationService(private val context: Context) {
 
+    /** Best-effort last known fix. Returns null when permission is missing or no provider has a cached fix. */
+    @SuppressLint("MissingPermission")
+    fun lastKnownLatLng(): Pair<Double, Double>? {
+        if (!PermissionHelper.hasLocation(context)) return null
+        return try {
+            val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val loc = manager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                ?: manager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                ?: return null
+            loc.latitude to loc.longitude
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): String = withContext(Dispatchers.IO) {
         if (!PermissionHelper.hasLocation(context)) {
