@@ -22,7 +22,7 @@ enum class PlanStepState(
     val tint: Color
 ) {
     DONE(label = "Done", symbol = Icons.Default.CheckCircle, tint = OpenRockyPalette.success),
-    ACTIVE(label = "Active", symbol = Icons.Default.Bolt, tint = OpenRockyPalette.secondary),
+    ACTIVE(label = "Active", symbol = Icons.Default.Bolt, tint = OpenRockyPalette.secondaryBrand),
     QUEUED(label = "Queued", symbol = Icons.Default.RadioButtonUnchecked, tint = OpenRockyPalette.mutedStatic);
 }
 

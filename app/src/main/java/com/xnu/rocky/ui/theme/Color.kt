@@ -11,10 +11,10 @@ package com.xnu.rocky.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Static colors used for Material color scheme
-// Adaptive colors are handled in Theme.kt via OpenRockyPalette composable getters
-val OpenRockyPrimary = OpenRockyPalette.accent
-val OpenRockySecondary = OpenRockyPalette.secondary
+// Static brand colors used to seed the fallback Material color scheme (non-dynamic devices).
+// Dynamic-color theming is wired up in Theme.kt on API 31+.
+val OpenRockyPrimary = OpenRockyPalette.accentBrand
+val OpenRockySecondary = OpenRockyPalette.secondaryBrand
 val OpenRockyError = OpenRockyPalette.error
 
 // Dark mode surface colors (default)

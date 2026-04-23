@@ -27,21 +27,21 @@ enum class SessionMode(
         subtitle = "Waiting for your intent…",
         buttonTitle = "Start Planning",
         symbol = Icons.Default.GraphicEq,
-        tint = OpenRockyPalette.accent
+        tint = OpenRockyPalette.accentBrand
     ),
     PLANNING(
         title = "Planning",
         subtitle = "Converting speech to task graph…",
         buttonTitle = "Execute",
         symbol = Icons.Default.AccountTree,
-        tint = OpenRockyPalette.accent
+        tint = OpenRockyPalette.accentBrand
     ),
     EXECUTING(
         title = "Executing",
         subtitle = "Tools running — timeline updating…",
         buttonTitle = "Pause",
         symbol = Icons.Default.Bolt,
-        tint = OpenRockyPalette.secondary
+        tint = OpenRockyPalette.secondaryBrand
     ),
     READY(
         title = "Ready",

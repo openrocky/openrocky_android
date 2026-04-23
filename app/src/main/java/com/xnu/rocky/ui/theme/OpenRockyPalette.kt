@@ -10,6 +10,7 @@
 package com.xnu.rocky.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
@@ -43,9 +44,11 @@ object OpenRockyPalette {
     val mutedStatic = Color(0x8CFFFFFF)
     val labelStatic = Color(0x66FFFFFF)
 
-    // ── Semantic (same in both modes) ──
-    val accent = Color(0xFF4AC7E3)
-    val secondary = Color(0xFFFB8C57)
+    // ── Brand colors (static fallback, used in non-composable contexts like enum properties) ──
+    val accentBrand = Color(0xFF4AC7E3)
+    val secondaryBrand = Color(0xFFFB8C57)
+
+    // ── Semantic (same in both modes; not affected by dynamic color) ──
     val success = Color(0xFF6EE39E)
     val warning = Color(0xFFFABF59)
     val error = Color(0xFFE35D6A)
@@ -62,4 +65,18 @@ object OpenRockyPalette {
     val text: Color @Composable @ReadOnlyComposable get() = if (isSystemInDarkTheme()) darkText else lightText
     val muted: Color @Composable @ReadOnlyComposable get() = if (isSystemInDarkTheme()) darkMuted else lightMuted
     val label: Color @Composable @ReadOnlyComposable get() = if (isSystemInDarkTheme()) darkLabel else lightLabel
+
+    /**
+     * Accent color. On Android 12+ with dynamic color enabled, this reflects the user's
+     * wallpaper (Material You). Falls back to the brand cyan otherwise.
+     *
+     * [MaterialTheme.colorScheme.primary] is hooked up to the dynamic scheme inside [OpenRockyTheme]
+     * when running on API 31+; on older devices it resolves to the fixed [accentBrand].
+     */
+    val accent: Color @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primary
+
+    /**
+     * Secondary accent. Follows dynamic color on Android 12+, falls back to brand orange.
+     */
+    val secondary: Color @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.secondary
 }

@@ -21,9 +21,9 @@ enum class TimelineKind(
     val symbol: ImageVector,
     val tint: Color
 ) {
-    SPEECH(label = "Speech", symbol = Icons.Default.Mic, tint = OpenRockyPalette.accent),
+    SPEECH(label = "Speech", symbol = Icons.Default.Mic, tint = OpenRockyPalette.accentBrand),
     SYSTEM(label = "System", symbol = Icons.Default.Settings, tint = OpenRockyPalette.mutedStatic),
-    TOOL(label = "Tool", symbol = Icons.Default.Build, tint = OpenRockyPalette.secondary),
+    TOOL(label = "Tool", symbol = Icons.Default.Build, tint = OpenRockyPalette.secondaryBrand),
     RESULT(label = "Result", symbol = Icons.Default.CheckCircle, tint = OpenRockyPalette.success);
 }
 

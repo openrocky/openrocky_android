@@ -49,8 +49,8 @@ object PreviewSession {
         quickTasks = listOf(
             QuickTask(title = "Weather", prompt = "What's the weather like?", symbol = Icons.Default.WbSunny, tint = OpenRockyPalette.warning),
             QuickTask(title = "Reminders", prompt = "Show my reminders", symbol = Icons.Default.Checklist, tint = OpenRockyPalette.success),
-            QuickTask(title = "Translate", prompt = "Translate to Spanish", symbol = Icons.Default.Translate, tint = OpenRockyPalette.accent),
-            QuickTask(title = "Summarize", prompt = "Summarize this page", symbol = Icons.Default.Summarize, tint = OpenRockyPalette.secondary),
+            QuickTask(title = "Translate", prompt = "Translate to Spanish", symbol = Icons.Default.Translate, tint = OpenRockyPalette.accentBrand),
+            QuickTask(title = "Summarize", prompt = "Summarize this page", symbol = Icons.Default.Summarize, tint = OpenRockyPalette.secondaryBrand),
         ),
         capabilityGroups = listOf(
             CapabilityGroup(
@@ -58,14 +58,14 @@ object PreviewSession {
                 status = "Active",
                 summary = "Location, Calendar, Contacts, Notifications",
                 items = listOf("android-location", "android-calendar", "android-contacts", "android-notifications", "android-alarm"),
-                tint = OpenRockyPalette.accent
+                tint = OpenRockyPalette.accentBrand
             ),
             CapabilityGroup(
                 title = "AI Tool Layer",
                 status = "Active",
                 summary = "Memory, Todo, Weather, Web Search",
                 items = listOf("memory_get", "memory_write", "todo", "weather", "web-search"),
-                tint = OpenRockyPalette.secondary
+                tint = OpenRockyPalette.secondaryBrand
             ),
             CapabilityGroup(
                 title = "Platform Integrations",
@@ -83,11 +83,11 @@ object PreviewSession {
         mode = SessionMode.READY,
         quickTasks = listOf(
             // Row 1
-            QuickTask(title = "What Can You Do?", prompt = "What can you do? Show me your capabilities.", symbol = Icons.Default.AutoAwesome, tint = OpenRockyPalette.accent),
+            QuickTask(title = "What Can You Do?", prompt = "What can you do? Show me your capabilities.", symbol = Icons.Default.AutoAwesome, tint = OpenRockyPalette.accentBrand),
             QuickTask(title = "Where Am I", prompt = "Where am I right now?", symbol = Icons.Default.MyLocation, tint = OpenRockyPalette.success),
             // Row 2
             QuickTask(title = "Weather", prompt = "What's the weather like right now?", symbol = Icons.Default.WbSunny, tint = OpenRockyPalette.warning),
-            QuickTask(title = "Today's Events", prompt = "What's on my calendar today?", symbol = Icons.Default.CalendarToday, tint = OpenRockyPalette.secondary),
+            QuickTask(title = "Today's Events", prompt = "What's on my calendar today?", symbol = Icons.Default.CalendarToday, tint = OpenRockyPalette.secondaryBrand),
         ),
     )
 }

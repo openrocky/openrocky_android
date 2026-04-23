@@ -9,14 +9,18 @@
 
 package com.xnu.rocky.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
+private val FallbackDarkScheme = darkColorScheme(
     primary = OpenRockyPrimary,
     secondary = OpenRockySecondary,
     background = OpenRockyDarkBackground,
@@ -33,7 +37,7 @@ private val DarkColorScheme = darkColorScheme(
     surfaceContainerHigh = OpenRockyDarkSurfaceVariant,
 )
 
-private val LightColorScheme = lightColorScheme(
+private val FallbackLightScheme = lightColorScheme(
     primary = OpenRockyPrimary,
     secondary = OpenRockySecondary,
     background = OpenRockyLightBackground,
@@ -50,13 +54,32 @@ private val LightColorScheme = lightColorScheme(
     surfaceContainerHigh = OpenRockyLightSurfaceVariant,
 )
 
+/**
+ * Theme entry point.
+ *
+ * On Android 12+ ([Build.VERSION_CODES.S]), when [dynamicColor] is true (default), the color
+ * scheme is derived from the user's current wallpaper (Material You). On older devices or when
+ * disabled, the fixed Rocky brand scheme is used instead.
+ *
+ * This makes Rocky feel like a native Android 12+ citizen — cross-app theming iOS cannot offer.
+ */
 @Composable
 fun OpenRockyTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> FallbackDarkScheme
+        else -> FallbackLightScheme
+    }
+
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
+        colorScheme = colorScheme,
         typography = OpenRockyTypography,
         content = content
     )
