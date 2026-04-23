@@ -28,13 +28,7 @@ class TTSClientException(message: String, val severity: Severity = Severity.NORM
 
 object TTSClientFactory {
     fun make(configuration: TTSProviderConfiguration): TTSClient = when (configuration.provider) {
-        TTSProviderKind.OPENAI, TTSProviderKind.ALI_CLOUD -> OpenAITTSClient(configuration)
-        TTSProviderKind.MINIMAX -> MiniMaxTTSClient(configuration)
-        TTSProviderKind.ELEVEN_LABS -> ElevenLabsTTSClient(configuration)
-        TTSProviderKind.VOLCENGINE -> VolcengineTTSClient(configuration)
-        TTSProviderKind.AZURE_SPEECH -> AzureTTSClient(configuration)
-        TTSProviderKind.GOOGLE_CLOUD -> GoogleTTSClient(configuration)
-        TTSProviderKind.QWEN_TTS -> QwenTTSClient(configuration)
+        TTSProviderKind.OPENAI -> OpenAITTSClient(configuration)
         TTSProviderKind.ZHIPU_GLM -> ZhipuGLMTTSClient(configuration)
     }
 }

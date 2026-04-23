@@ -18,7 +18,8 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 class TTSProviderStore(private val context: Context) {
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    // coerceInputValues: legacy persisted instances with removed provider kinds (MINIMAX/ELEVEN_LABS/VOLCENGINE/AZURE_SPEECH/GOOGLE_CLOUD/ALI_CLOUD/QWEN_TTS) fall back to the default kind instead of crashing on load.
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; coerceInputValues = true }
     private val dir: File get() = File(context.filesDir, "OpenRockyTTSProviders").also { it.mkdirs() }
     private val manifestFile: File get() = File(dir, "manifest.json")
 

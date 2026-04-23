@@ -18,7 +18,8 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 class RealtimeProviderStore(private val context: Context) {
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    // coerceInputValues ensures stored instances whose `kind` enum value has been removed (e.g. legacy "GLM") fall back to the field default instead of crashing on load.
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; coerceInputValues = true }
     private val dir: File get() = File(context.filesDir, "OpenRockyRealtimeProviders").also { it.mkdirs() }
     private val manifestFile: File get() = File(dir, "manifest.json")
 

@@ -22,10 +22,8 @@ class STTClientException(message: String, val severity: Severity = Severity.NORM
 
 object STTClientFactory {
     fun make(configuration: STTProviderConfiguration): STTClient = when (configuration.provider) {
-        STTProviderKind.OPENAI, STTProviderKind.GROQ, STTProviderKind.ALI_CLOUD -> OpenAISTTClient(configuration)
-        STTProviderKind.DEEPGRAM -> DeepgramSTTClient(configuration)
-        STTProviderKind.AZURE_SPEECH -> AzureSTTClient(configuration)
-        STTProviderKind.GOOGLE_CLOUD -> GoogleSTTClient(configuration)
+        // Zhipu GLM exposes an OpenAI-compatible /audio/transcriptions endpoint, so it reuses the same client.
+        STTProviderKind.OPENAI, STTProviderKind.ZHIPU_GLM -> OpenAISTTClient(configuration)
     }
 }
 

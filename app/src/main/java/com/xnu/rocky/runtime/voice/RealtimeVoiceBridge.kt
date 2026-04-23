@@ -32,7 +32,6 @@ class RealtimeVoiceBridge(
 
     private fun makeClient(): RealtimeVoiceClient = when (config.provider) {
         RealtimeProviderKind.OPENAI -> OpenAIRealtimeVoiceClient(config, toolbox, characterStore, context)
-        RealtimeProviderKind.GLM -> GLMRealtimeVoiceClient(config, toolbox, characterStore)
     }
 
     fun start(): Flow<RealtimeEvent> = channelFlow {

@@ -18,7 +18,8 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 class STTProviderStore(private val context: Context) {
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    // coerceInputValues: legacy persisted instances with removed provider kinds (GROQ/DEEPGRAM/AZURE_SPEECH/GOOGLE_CLOUD/ALI_CLOUD) fall back to the default kind instead of crashing on load.
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; coerceInputValues = true }
     private val dir: File get() = File(context.filesDir, "OpenRockySTTProviders").also { it.mkdirs() }
     private val manifestFile: File get() = File(dir, "manifest.json")
 
