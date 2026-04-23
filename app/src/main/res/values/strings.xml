@@ -17,4 +17,11 @@
     <string name="widget_voice_label">Rocky</string>
     <string name="widget_voice_caption">Tap to talk</string>
     <string name="widget_voice_description">One-tap voice session</string>
+
+    <!-- Foreground voice service notification -->
+    <string name="voice_service_title">Rocky voice session</string>
+    <string name="voice_service_text">Listening — tap to return, Stop to end.</string>
+    <string name="voice_service_stop">Stop</string>
+    <string name="voice_service_channel">Voice session</string>
+    <string name="voice_service_channel_description">Shown while a Rocky voice session is active in the background.</string>
 </resources>

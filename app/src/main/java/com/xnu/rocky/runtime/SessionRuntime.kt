@@ -10,6 +10,7 @@
 package com.xnu.rocky.runtime
 
 import android.content.Context
+import com.xnu.rocky.VoiceForegroundService
 import com.xnu.rocky.models.*
 import com.xnu.rocky.providers.*
 import com.xnu.rocky.runtime.tools.Toolbox
@@ -200,6 +201,10 @@ class SessionRuntime(
         _isVoiceActive.value = true
         _statusText.value = "Connecting…"
 
+        // Foreground service keeps the mic / session alive when the screen locks or the user
+        // leaves the app — the Android-only capability that actually makes Rocky usable hands-free.
+        VoiceForegroundService.start(context)
+
         voiceJob = scope.launch {
             try {
                 when (preferences.voiceMode.value) {
@@ -243,6 +248,7 @@ class SessionRuntime(
                 _statusText.value = "Error: ${e.message}"
             } finally {
                 _isVoiceActive.value = false
+                VoiceForegroundService.stop(context)
             }
         }
     }
@@ -256,6 +262,7 @@ class SessionRuntime(
         _isVoiceActive.value = false
         _statusText.value = ""
         updateSession { it.copy(mode = SessionMode.READY) }
+        VoiceForegroundService.stop(context)
     }
 
     fun newConversation(): String {

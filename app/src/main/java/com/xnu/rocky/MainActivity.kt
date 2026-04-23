@@ -63,9 +63,12 @@ sealed class LaunchRequest {
     data class SharedText(val text: String) : LaunchRequest()
     /** Automation-sent prompt. Treated as if the user typed and sent the text — triggers chat reply. */
     data class SendPrompt(val text: String) : LaunchRequest()
+    /** Voice foreground-service notification "Stop" button tapped from the shade / lock screen. */
+    data object StopVoice : LaunchRequest()
 }
 
 const val ACTION_START_VOICE = "com.xnu.rocky.action.START_VOICE"
+const val ACTION_STOP_VOICE = "com.xnu.rocky.action.STOP_VOICE"
 const val ACTION_NEW_CHAT = "com.xnu.rocky.action.NEW_CHAT"
 const val ACTION_CONTINUE_LAST = "com.xnu.rocky.action.CONTINUE_LAST"
 const val ACTION_SEND_PROMPT = "com.xnu.rocky.action.SEND_PROMPT"
@@ -73,6 +76,7 @@ const val EXTRA_PROMPT = "prompt"
 
 private fun Intent.toLaunchRequest(): LaunchRequest? = when (action) {
     Intent.ACTION_ASSIST, Intent.ACTION_VOICE_COMMAND, ACTION_START_VOICE -> LaunchRequest.StartVoice
+    ACTION_STOP_VOICE -> LaunchRequest.StopVoice
     ACTION_NEW_CHAT -> LaunchRequest.NewChat
     ACTION_CONTINUE_LAST -> LaunchRequest.ContinueLast
     ACTION_SEND_PROMPT -> {
@@ -229,6 +233,12 @@ fun OpenRockyMainApp(
             is LaunchRequest.SendPrompt -> {
                 // Automation-driven prompt: treat as if the user sent it — fires a reply immediately.
                 viewModel.sessionRuntime.sendTextMessage(req.text)
+            }
+            is LaunchRequest.StopVoice -> {
+                // Notification "Stop" button routes here so SessionRuntime (the single source of
+                // truth for voice lifecycle) can tear down the bridge + foreground service cleanly.
+                viewModel.sessionRuntime.stopVoiceSession()
+                showVoiceOverlay = false
             }
         }
         onLaunchRequestConsumed()
