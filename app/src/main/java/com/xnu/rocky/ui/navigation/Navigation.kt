@@ -43,3 +43,4 @@ import kotlinx.serialization.Serializable
 @Serializable object DebugPanelRoute
 @Serializable object OnboardingRoute
 @Serializable object ConversationListRoute
+@Serializable object SystemIntegrationsRoute

@@ -49,6 +49,7 @@ fun ProviderSettingsView(
     onWorkspace: () -> Unit,
     onLogs: () -> Unit,
     onDebug: () -> Unit,
+    onSystemIntegrations: () -> Unit,
     onAbout: () -> Unit
 ) {
     Scaffold(
@@ -135,6 +136,9 @@ fun ProviderSettingsView(
             }
             item {
                 SettingsRow(Icons.Default.Code, "Debug", "Session & runtime inspector", OpenRockyPalette.label, onDebug)
+            }
+            item {
+                SettingsRow(Icons.Default.SettingsRemote, "System Integrations", "Assist, notifications, shortcuts, automation", OpenRockyPalette.accent, onSystemIntegrations)
             }
 
             item { Spacer(Modifier.height(16.dp)) }

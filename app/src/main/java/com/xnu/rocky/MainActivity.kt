@@ -342,7 +342,14 @@ fun OpenRockyMainApp(
                     onWorkspace = { navController.navigate(WorkspaceFilesRoute) },
                     onLogs = { navController.navigate(LogsRoute) },
                     onDebug = { navController.navigate(DebugPanelRoute) },
+                    onSystemIntegrations = { navController.navigate(SystemIntegrationsRoute) },
                     onAbout = { navController.navigate(AboutRoute) }
+                )
+            }
+
+            composable<SystemIntegrationsRoute> {
+                com.xnu.rocky.ui.screens.settings.SystemIntegrationsView(
+                    onBack = { navController.popBackStack() }
                 )
             }
 
