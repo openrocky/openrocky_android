@@ -65,6 +65,8 @@ sealed class LaunchRequest {
     data class SendPrompt(val text: String) : LaunchRequest()
     /** Voice foreground-service notification "Stop" button tapped from the shade / lock screen. */
     data object StopVoice : LaunchRequest()
+    /** Open a specific conversation by ID (dynamic launcher shortcut). */
+    data class OpenConversation(val id: String) : LaunchRequest()
 }
 
 const val ACTION_START_VOICE = "com.xnu.rocky.action.START_VOICE"
@@ -72,7 +74,9 @@ const val ACTION_STOP_VOICE = "com.xnu.rocky.action.STOP_VOICE"
 const val ACTION_NEW_CHAT = "com.xnu.rocky.action.NEW_CHAT"
 const val ACTION_CONTINUE_LAST = "com.xnu.rocky.action.CONTINUE_LAST"
 const val ACTION_SEND_PROMPT = "com.xnu.rocky.action.SEND_PROMPT"
+const val ACTION_OPEN_CONVERSATION = "com.xnu.rocky.action.OPEN_CONVERSATION"
 const val EXTRA_PROMPT = "prompt"
+const val EXTRA_CONVERSATION_ID = "conversation_id"
 
 private fun Intent.toLaunchRequest(): LaunchRequest? = when (action) {
     Intent.ACTION_ASSIST, Intent.ACTION_VOICE_COMMAND, ACTION_START_VOICE -> LaunchRequest.StartVoice
@@ -82,6 +86,10 @@ private fun Intent.toLaunchRequest(): LaunchRequest? = when (action) {
     ACTION_SEND_PROMPT -> {
         val prompt = getStringExtra(EXTRA_PROMPT) ?: getStringExtra(Intent.EXTRA_TEXT)
         if (!prompt.isNullOrBlank()) LaunchRequest.SendPrompt(prompt) else null
+    }
+    ACTION_OPEN_CONVERSATION -> {
+        val id = getStringExtra(EXTRA_CONVERSATION_ID)
+        if (!id.isNullOrBlank()) LaunchRequest.OpenConversation(id) else null
     }
     Intent.ACTION_SEND -> {
         val shared = getStringExtra(Intent.EXTRA_TEXT)
@@ -240,8 +248,19 @@ fun OpenRockyMainApp(
                 viewModel.sessionRuntime.stopVoiceSession()
                 showVoiceOverlay = false
             }
+            is LaunchRequest.OpenConversation -> {
+                // Dynamic shortcut or automation — jump straight to the target conversation.
+                currentConversationId = req.id
+                viewModel.sessionRuntime.setConversation(req.id)
+            }
         }
         onLaunchRequestConsumed()
+    }
+
+    // Publish the three most-recent conversations as dynamic launcher shortcuts so long-pressing
+    // the Rocky icon surfaces them alongside the static Voice / New Chat / Continue entries.
+    LaunchedEffect(conversations) {
+        RecentConversationsShortcuts.refresh(context, conversations)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(OpenRockyPalette.background)) {

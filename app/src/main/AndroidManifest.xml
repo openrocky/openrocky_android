@@ -79,6 +79,11 @@
                 <action android:name="com.xnu.rocky.action.SEND_PROMPT" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- Dynamic shortcut for a recent conversation (extra "conversation_id"). -->
+            <intent-filter>
+                <action android:name="com.xnu.rocky.action.OPEN_CONVERSATION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
 
             <meta-data
                 android:name="android.app.shortcuts"
