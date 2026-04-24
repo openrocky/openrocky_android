@@ -5,6 +5,7 @@
 
 package com.xnu.rocky
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -14,7 +15,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
 
 /**
  * Keeps the voice session alive when the user leaves the app or locks the screen.
@@ -26,17 +26,14 @@ import androidx.core.app.NotificationCompat
  */
 class VoiceForegroundService : Service() {
 
+    private var mediaSession: VoiceMediaSession? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                // Hand off to MainActivity so SessionRuntime (the single source of truth for voice
-                // lifecycle) can tear down the bridge cleanly; it then calls stop() on this service.
-                val stopIntent = Intent(this, MainActivity::class.java)
-                stopIntent.action = ACTION_STOP_VOICE
-                stopIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                startActivity(stopIntent)
+                requestSessionStop()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -45,8 +42,30 @@ class VoiceForegroundService : Service() {
         return START_STICKY
     }
 
+    override fun onDestroy() {
+        mediaSession?.release()
+        mediaSession = null
+        super.onDestroy()
+    }
+
+    /**
+     * Hand off to MainActivity so SessionRuntime (the single source of truth for voice
+     * lifecycle) can tear down the bridge cleanly; it then calls stop() on this service.
+     */
+    private fun requestSessionStop() {
+        val stopIntent = Intent(this, MainActivity::class.java)
+        stopIntent.action = ACTION_STOP_VOICE
+        stopIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        startActivity(stopIntent)
+    }
+
     private fun startAsForeground() {
         ensureChannel()
+        // MediaSession makes the notification show rich media controls on the lock screen + Bluetooth
+        // headsets, and routes headset play/pause buttons to stop the voice session.
+        if (mediaSession == null) {
+            mediaSession = VoiceMediaSession(this) { requestSessionStop() }
+        }
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
@@ -55,7 +74,7 @@ class VoiceForegroundService : Service() {
         }
     }
 
-    private fun buildNotification(): android.app.Notification {
+    private fun buildNotification(): Notification {
         val openIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -72,17 +91,33 @@ class VoiceForegroundService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val stopAction = Notification.Action.Builder(
+            android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_tile_voice),
+            getString(R.string.voice_service_stop),
+            stopPending
+        ).build()
+
+        // Framework Notification.Builder so we can attach Notification.MediaStyle (lock-screen
+        // media card) without pulling in androidx.media just for the compat shim.
+        val builder = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_tile_voice)
             .setContentTitle(getString(R.string.voice_service_title))
             .setContentText(getString(R.string.voice_service_text))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setCategory(Notification.CATEGORY_TRANSPORT)
             .setContentIntent(openPending)
-            .addAction(0, getString(R.string.voice_service_stop), stopPending)
-            .setSilent(true)
-            .build()
+            .addAction(stopAction)
+            // Silence default notification sound — the channel is IMPORTANCE_LOW so this is mostly belt-and-braces.
+            .setOnlyAlertOnce(true)
+
+        mediaSession?.token?.let { token ->
+            val style = Notification.MediaStyle()
+                .setMediaSession(token)
+                .setShowActionsInCompactView(0)
+            builder.style = style
+        }
+
+        return builder.build()
     }
 
     private fun ensureChannel() {
