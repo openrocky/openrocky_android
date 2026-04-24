@@ -24,4 +24,8 @@
     <string name="voice_service_stop">Stop</string>
     <string name="voice_service_channel">Voice session</string>
     <string name="voice_service_channel_description">Shown while a Rocky voice session is active in the background.</string>
+
+    <!-- Accessibility service -->
+    <string name="accessibility_service_summary">Let Rocky answer \"what am I looking at?\"</string>
+    <string name="accessibility_service_description">When enabled, Rocky can read the visible text on the current screen on demand (via the screen-read tool). Content is never stored — it is only pulled when the assistant is asked and returned for that single response.</string>
 </resources>

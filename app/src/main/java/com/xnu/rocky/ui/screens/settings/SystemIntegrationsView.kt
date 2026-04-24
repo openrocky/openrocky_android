@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.xnu.rocky.RockyAccessibilityService
 import com.xnu.rocky.RockyNotificationListenerService
 import com.xnu.rocky.runtime.tools.NotificationInboxStore
 import com.xnu.rocky.ui.theme.OpenRockyPalette
@@ -80,6 +81,28 @@ fun SystemIntegrationsView(onBack: () -> Unit) {
                         }
                         // Re-probe when user returns.
                         settingsFlagGranted = isNotificationListenerEnabled(context)
+                    }
+                )
+            }
+
+            item {
+                val accessibilityEnabled = RockyAccessibilityService.isActive() ||
+                    isAccessibilityServiceEnabled(context)
+                IntegrationCard(
+                    icon = Icons.Default.Visibility,
+                    iconTint = OpenRockyPalette.warning,
+                    title = "Screen Read (Accessibility)",
+                    statusLabel = if (accessibilityEnabled) "Enabled" else "Disabled",
+                    statusOk = accessibilityEnabled,
+                    description = "Lets the screen-read tool answer \"what am I looking at?\" by reading the current screen on demand. Rocky never caches or logs screen content — it is pulled only when the tool is called, used for that single reply, then discarded. Opt-in: flip the Rocky switch in Settings → Accessibility → Installed apps.",
+                    actionLabel = if (accessibilityEnabled) "Open accessibility settings" else "Enable",
+                    onAction = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
                     }
                 )
             }
@@ -208,5 +231,12 @@ private fun IntegrationCard(
 private fun isNotificationListenerEnabled(context: Context): Boolean {
     val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: return false
     val target = ComponentName(context, RockyNotificationListenerService::class.java).flattenToString()
+    return flat.split(":").any { it == target }
+}
+
+/** Returns true when the user has enabled Rocky's AccessibilityService in system settings. */
+private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+    val flat = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+    val target = ComponentName(context, RockyAccessibilityService::class.java).flattenToString()
     return flat.split(":").any { it == target }
 }

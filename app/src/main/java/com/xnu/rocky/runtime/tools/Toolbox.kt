@@ -130,6 +130,19 @@ class Toolbox(
                         }
                     }
                 }
+                "screen-read" -> {
+                    if (!com.xnu.rocky.RockyAccessibilityService.isActive()) {
+                        "Accessibility service not enabled. Ask the user to turn on Rocky in Settings → Accessibility → Installed apps. This unlocks reading the active screen on demand."
+                    } else {
+                        val maxChars = args["max_chars"]?.jsonPrimitive?.intOrNull?.coerceIn(200, 16000) ?: 4000
+                        val text = com.xnu.rocky.RockyAccessibilityService.captureActiveWindow(maxChars)
+                        when {
+                            text == null -> "Accessibility service is not currently bound. Re-check the toggle in Settings → Accessibility."
+                            text.isBlank() -> "No readable text on the current screen."
+                            else -> text
+                        }
+                    }
+                }
                 "android-calendar-list" -> calendarService.listEvents(
                     daysAhead = args["days_ahead"]?.jsonPrimitive?.intOrNull ?: 7
                 )
@@ -501,6 +514,16 @@ class Toolbox(
                 putJsonObject("properties") {
                     putJsonObject("limit") { put("type", JsonPrimitive("number")); put("description", JsonPrimitive("Max entries to return (default 20, cap 64).")) }
                     putJsonObject("package") { put("type", JsonPrimitive("string")); put("description", JsonPrimitive("Optional package name to filter (e.g. com.whatsapp, com.tencent.mm).")) }
+                }
+            }
+        )),
+        ToolDefinition(function = ToolFunctionDef(
+            name = "screen-read",
+            description = "Read the visible text on the user's current screen (on-demand only). Requires the user to have enabled Rocky as an Accessibility service. Use for 'what am I looking at?' or to help with a form / page the user is viewing.",
+            parameters = buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                putJsonObject("properties") {
+                    putJsonObject("max_chars") { put("type", JsonPrimitive("number")); put("description", JsonPrimitive("Max characters to return (default 4000, cap 16000).")) }
                 }
             }
         )),
