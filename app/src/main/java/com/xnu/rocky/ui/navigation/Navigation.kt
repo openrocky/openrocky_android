@@ -12,6 +12,7 @@ package com.xnu.rocky.ui.navigation
 import kotlinx.serialization.Serializable
 
 @Serializable object HomeRoute
+@Serializable object ChatRoute
 @Serializable object SettingsRoute
 @Serializable object ProviderInstanceListRoute
 @Serializable object RealtimeProviderInstanceListRoute

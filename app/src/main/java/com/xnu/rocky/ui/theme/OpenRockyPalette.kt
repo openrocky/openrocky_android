@@ -48,6 +48,10 @@ object OpenRockyPalette {
     val accentBrand = Color(0xFF4AC7E3)
     val secondaryBrand = Color(0xFFFB8C57)
 
+    // ── Voice-mode tint (deep blue, matches iOS post-2026-04 voice palette) ──
+    val voicePrimary = Color(0xFF4D8FE0)
+    val voiceDeep = Color(0xFF1E3A7A)
+
     // ── Semantic (same in both modes; not affected by dynamic color) ──
     val success = Color(0xFF6EE39E)
     val warning = Color(0xFFFABF59)

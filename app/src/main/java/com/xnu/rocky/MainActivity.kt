@@ -32,10 +32,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.xnu.rocky.ui.navigation.*
 import com.xnu.rocky.ui.screens.chat.*
-import com.xnu.rocky.ui.screens.home.HomeScreen
 import com.xnu.rocky.ui.screens.providers.*
 import com.xnu.rocky.ui.screens.settings.*
-import com.xnu.rocky.ui.screens.voice.VoiceOverlayView
 import com.xnu.rocky.ui.theme.OpenRockyTheme
 import com.xnu.rocky.ui.theme.OpenRockyPalette
 import kotlinx.coroutines.launch
@@ -159,8 +157,18 @@ fun OpenRockyMainApp(
     }
 
     var showConversationList by remember { mutableStateOf(false) }
-    var showVoiceOverlay by remember { mutableStateOf(false) }
     var currentConversationId by remember { mutableStateOf<String?>(null) }
+    val activeRealtimeInstance = realtimeInstances.find { it.id == activeRealtimeId }
+    val realtimeConfigured = activeRealtimeInstance != null
+    val providerLabel = if (realtimeConfigured) {
+        val modelDisplay = activeRealtimeInstance!!.modelID.ifBlank { activeRealtimeInstance.kind.defaultModel }
+        "${activeRealtimeInstance.kind.displayName} · $modelDisplay"
+    } else {
+        "Voice not configured"
+    }
+    val recentMessages = remember(currentConversationId, session.assistantReply, session.liveTranscript) {
+        currentConversationId?.let { viewModel.storageProvider.loadMessages(it) } ?: emptyList()
+    }
 
     LaunchedEffect(Unit) {
         if (viewModel.needsOnboarding) {
@@ -178,7 +186,6 @@ fun OpenRockyMainApp(
         val req = pendingLaunchRequest ?: return@LaunchedEffect
         when (req) {
             is LaunchRequest.StartVoice -> {
-                showVoiceOverlay = true
                 if (PermissionHelper.hasMicrophone(context)) {
                     viewModel.sessionRuntime.startVoiceSession()
                 } else {
@@ -187,29 +194,32 @@ fun OpenRockyMainApp(
             }
             is LaunchRequest.NewChat -> {
                 currentConversationId = viewModel.sessionRuntime.newConversation()
+                navController.navigate(ChatRoute)
             }
             is LaunchRequest.ContinueLast -> {
                 // Default "resume last conversation" is what the app already does on launch.
+                navController.navigate(ChatRoute)
             }
             is LaunchRequest.SharedText -> {
-                // Share-sheet text: send immediately. The previous "pre-fill the composer" behavior
-                // depended on dictation plumbing that's gone with the Classic pipeline drop.
+                // Share-sheet text: send immediately on the chat route.
                 viewModel.sessionRuntime.sendTextMessage(req.text)
+                navController.navigate(ChatRoute)
             }
             is LaunchRequest.SendPrompt -> {
                 // Automation-driven prompt: treat as if the user sent it — fires a reply immediately.
                 viewModel.sessionRuntime.sendTextMessage(req.text)
+                navController.navigate(ChatRoute)
             }
             is LaunchRequest.StopVoice -> {
                 // Notification "Stop" button routes here so SessionRuntime (the single source of
                 // truth for voice lifecycle) can tear down the bridge + foreground service cleanly.
                 viewModel.sessionRuntime.stopVoiceSession()
-                showVoiceOverlay = false
             }
             is LaunchRequest.OpenConversation -> {
                 // Dynamic shortcut or automation — jump straight to the target conversation.
                 currentConversationId = req.id
                 viewModel.sessionRuntime.setConversation(req.id)
+                navController.navigate(ChatRoute)
             }
         }
         onLaunchRequestConsumed()
@@ -225,25 +235,36 @@ fun OpenRockyMainApp(
         NavHost(navController = navController, startDestination = HomeRoute) {
 
             composable<HomeRoute> {
+                com.xnu.rocky.ui.screens.voice.VoiceHomeScreen(
+                    session = session,
+                    isVoiceActive = isVoiceActive,
+                    realtimeConfigured = realtimeConfigured,
+                    providerLabel = providerLabel,
+                    recentMessages = recentMessages,
+                    onOpenSettings = { navController.navigate(SettingsRoute) },
+                    onOpenChat = { navController.navigate(ChatRoute) },
+                    onToggleVoice = {
+                        if (isVoiceActive) {
+                            viewModel.sessionRuntime.stopVoiceSession()
+                        } else if (PermissionHelper.hasMicrophone(context)) {
+                            viewModel.sessionRuntime.startVoiceSession()
+                        } else {
+                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                )
+            }
+
+            composable<ChatRoute> {
                 Column(modifier = Modifier.fillMaxSize()) {
                     TopChromeView(
                         isVoiceActive = isVoiceActive,
                         onSettingsClick = { navController.navigate(SettingsRoute) },
                         onVoiceToggle = {
-                            android.util.Log.d("MainActivity", "[VOICE] toggle pressed, isVoiceActive=$isVoiceActive hasMic=${PermissionHelper.hasMicrophone(context)}")
                             if (isVoiceActive) {
                                 viewModel.sessionRuntime.stopVoiceSession()
-                                showVoiceOverlay = false
                             } else {
-                                if (PermissionHelper.hasMicrophone(context)) {
-                                    android.util.Log.d("MainActivity", "[VOICE] mic permission OK, starting voice session")
-                                    viewModel.sessionRuntime.startVoiceSession()
-                                    showVoiceOverlay = true
-                                } else {
-                                    android.util.Log.d("MainActivity", "[VOICE] requesting mic permission")
-                                    showVoiceOverlay = true
-                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
+                                navController.popBackStack(HomeRoute, inclusive = false)
                             }
                         },
                         onNewChatClick = {
@@ -255,37 +276,11 @@ fun OpenRockyMainApp(
                         viewModel.storageProvider.loadMessages(it)
                     } ?: emptyList()
 
-                    android.util.Log.d("MainActivity", "[UI] convId=$currentConversationId messages.size=${messages.size} session.mode=${session.mode}")
-
-                    if (messages.isEmpty() && !isVoiceActive) {
-                        HomeScreen(
-                            session = session,
-                            onSendMessage = { viewModel.sessionRuntime.sendTextMessage(it) },
-                            onQuickTask = { viewModel.sessionRuntime.sendTextMessage(it.prompt) },
-                            onConversationsClick = { showConversationList = true },
-                            modifier = Modifier.weight(1f)
-                        )
-                    } else {
-                        ChatScreen(messages = messages, modifier = Modifier.weight(1f))
-                        if (!isVoiceActive) {
-                            com.xnu.rocky.ui.screens.home.ComposerBarStandalone(
-                                onSendMessage = { viewModel.sessionRuntime.sendTextMessage(it) },
-                                onConversationsClick = { showConversationList = true }
-                            )
-                        }
-                    }
-
-                    // Voice panel at bottom (replaces composer bar when active)
-                    if (isVoiceActive) {
-                        VoiceOverlayView(
-                            mode = session.mode,
-                            statusText = statusText,
-                            onEnd = {
-                                viewModel.sessionRuntime.stopVoiceSession()
-                                showVoiceOverlay = false
-                            }
-                        )
-                    }
+                    ChatScreen(messages = messages, modifier = Modifier.weight(1f))
+                    com.xnu.rocky.ui.screens.home.ComposerBarStandalone(
+                        onSendMessage = { viewModel.sessionRuntime.sendTextMessage(it) },
+                        onConversationsClick = { showConversationList = true }
+                    )
                 }
             }
 
