@@ -17,8 +17,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,31 +27,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xnu.rocky.ui.theme.OpenRockyPalette
 
-/**
- * Shared composer bar. Callers that want dictation should pass:
- *  - isDictating state
- *  - onStartDictation (launches STT; parent appends resulting text via [dictationResult])
- *  - onStopDictation
- *  - dictationResult: newest STT result appended into the composer when it changes.
- */
+/** Pure-text chat composer. Voice input is the dedicated Realtime path elsewhere; the system keyboard's
+ *  built-in dictation handles speech-to-text on the composer if the user wants it. */
 @Composable
 fun ComposerBarStandalone(
     onSendMessage: (String) -> Unit,
     onConversationsClick: () -> Unit = {},
-    isDictating: Boolean = false,
-    onStartDictation: (() -> Unit)? = null,
-    onStopDictation: (() -> Unit)? = null,
-    dictationResult: String? = null,
-    onDictationConsumed: () -> Unit = {}
+    minimalistLayout: Boolean = false
 ) {
     var text by remember { mutableStateOf("") }
-    LaunchedEffect(dictationResult) {
-        val incoming = dictationResult
-        if (!incoming.isNullOrBlank()) {
-            text = if (text.isBlank()) incoming else "$text $incoming"
-            onDictationConsumed()
-        }
-    }
 
     Surface(color = OpenRockyPalette.card, shadowElevation = 8.dp) {
         Row(
@@ -64,8 +46,10 @@ fun ComposerBarStandalone(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            IconButton(onClick = onConversationsClick, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Forum, "Conversations", tint = OpenRockyPalette.muted, modifier = Modifier.size(22.dp))
+            if (!minimalistLayout) {
+                IconButton(onClick = onConversationsClick, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Forum, "Conversations", tint = OpenRockyPalette.muted, modifier = Modifier.size(22.dp))
+                }
             }
 
             BasicTextField(
@@ -82,52 +66,31 @@ fun ComposerBarStandalone(
                 decorationBox = { innerTextField ->
                     Box {
                         if (text.isEmpty()) {
-                            Text(
-                                if (isDictating) "Listening…" else "Ask Rocky anything…",
-                                color = OpenRockyPalette.label,
-                                fontSize = 15.sp
-                            )
+                            Text("Ask Rocky anything…", color = OpenRockyPalette.label, fontSize = 15.sp)
                         }
                         innerTextField()
                     }
                 }
             )
 
-            if (text.isBlank() && onStartDictation != null) {
-                IconButton(
-                    onClick = { if (isDictating) onStopDictation?.invoke() else onStartDictation() },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(if (isDictating) OpenRockyPalette.error else OpenRockyPalette.cardElevated)
-                ) {
-                    Icon(
-                        if (isDictating) Icons.Default.Stop else Icons.Default.Mic,
-                        contentDescription = if (isDictating) "Stop dictation" else "Dictate",
-                        tint = if (isDictating) OpenRockyPalette.background else OpenRockyPalette.muted,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            } else {
-                IconButton(
-                    onClick = {
-                        if (text.isNotBlank()) {
-                            onSendMessage(text)
-                            text = ""
-                        }
-                    },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(if (text.isNotBlank()) OpenRockyPalette.accent else OpenRockyPalette.cardElevated)
-                ) {
-                    Icon(
-                        Icons.Default.ArrowUpward,
-                        contentDescription = "Send",
-                        tint = if (text.isNotBlank()) OpenRockyPalette.background else OpenRockyPalette.muted,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            IconButton(
+                onClick = {
+                    if (text.isNotBlank()) {
+                        onSendMessage(text)
+                        text = ""
+                    }
+                },
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (text.isNotBlank()) OpenRockyPalette.accent else OpenRockyPalette.cardElevated)
+            ) {
+                Icon(
+                    Icons.Default.ArrowUpward,
+                    contentDescription = "Send",
+                    tint = if (text.isNotBlank()) OpenRockyPalette.background else OpenRockyPalette.muted,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }

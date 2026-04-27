@@ -18,8 +18,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,21 +36,9 @@ fun HomeScreen(
     onSendMessage: (String) -> Unit,
     onQuickTask: (QuickTask) -> Unit,
     onConversationsClick: () -> Unit,
-    isDictating: Boolean = false,
-    onStartDictation: (() -> Unit)? = null,
-    onStopDictation: (() -> Unit)? = null,
-    dictationResult: String? = null,
-    onDictationConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var inputText by remember { mutableStateOf("") }
-    LaunchedEffect(dictationResult) {
-        val incoming = dictationResult
-        if (!incoming.isNullOrBlank()) {
-            inputText = if (inputText.isBlank()) incoming else "$inputText $incoming"
-            onDictationConsumed()
-        }
-    }
 
     Column(
         modifier = modifier
@@ -104,10 +90,7 @@ fun HomeScreen(
                     inputText = ""
                 }
             },
-            onConversationsClick = onConversationsClick,
-            isDictating = isDictating,
-            onStartDictation = onStartDictation,
-            onStopDictation = onStopDictation
+            onConversationsClick = onConversationsClick
         )
     }
 }
@@ -164,10 +147,7 @@ private fun ComposerBar(
     text: String,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
-    onConversationsClick: () -> Unit,
-    isDictating: Boolean = false,
-    onStartDictation: (() -> Unit)? = null,
-    onStopDictation: (() -> Unit)? = null
+    onConversationsClick: () -> Unit
 ) {
     Surface(
         color = OpenRockyPalette.card,
@@ -211,7 +191,7 @@ private fun ComposerBar(
                     Box {
                         if (text.isEmpty()) {
                             Text(
-                                "Ask Rocky anything\u2026",
+                                "Ask Rocky anything…",
                                 color = OpenRockyPalette.label,
                                 fontSize = 15.sp
                             )
@@ -221,38 +201,21 @@ private fun ComposerBar(
                 }
             )
 
-            if (text.isBlank() && onStartDictation != null) {
-                IconButton(
-                    onClick = { if (isDictating) onStopDictation?.invoke() else onStartDictation() },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(if (isDictating) OpenRockyPalette.error else OpenRockyPalette.cardElevated)
-                ) {
-                    Icon(
-                        if (isDictating) Icons.Default.Stop else Icons.Default.Mic,
-                        contentDescription = if (isDictating) "Stop dictation" else "Dictate",
-                        tint = if (isDictating) OpenRockyPalette.background else OpenRockyPalette.muted,
-                        modifier = Modifier.size(20.dp)
+            IconButton(
+                onClick = onSend,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (text.isNotBlank()) OpenRockyPalette.accent else OpenRockyPalette.cardElevated
                     )
-                }
-            } else {
-                IconButton(
-                    onClick = onSend,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (text.isNotBlank()) OpenRockyPalette.accent else OpenRockyPalette.cardElevated
-                        )
-                ) {
-                    Icon(
-                        Icons.Default.ArrowUpward,
-                        contentDescription = "Send",
-                        tint = if (text.isNotBlank()) OpenRockyPalette.background else OpenRockyPalette.muted,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            ) {
+                Icon(
+                    Icons.Default.ArrowUpward,
+                    contentDescription = "Send",
+                    tint = if (text.isNotBlank()) OpenRockyPalette.background else OpenRockyPalette.muted,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
