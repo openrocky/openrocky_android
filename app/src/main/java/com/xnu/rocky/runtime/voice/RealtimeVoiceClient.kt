@@ -19,4 +19,11 @@ interface RealtimeVoiceClient {
     suspend fun finishAudioInput()
     suspend fun sendToolOutput(callID: String, output: String)
     suspend fun speakText(text: String)
+
+    /** Cancel the in-flight assistant response (sent on user barge-in). Mirrors iOS `response.cancel`. */
+    suspend fun cancelResponse() {}
+
+    /** Truncate the assistant audio mid-playback so the conversation history matches what the user actually heard.
+     *  [audioEndMs] is how much assistant audio has been played so far. Mirrors iOS `conversation.item.truncate`. */
+    suspend fun truncateAssistantAudio(audioEndMs: Long) {}
 }

@@ -17,8 +17,15 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
+/**
+ * Single-instance Realtime provider store. The UI no longer surfaces add/list/delete — it edits
+ * the active instance in place. We still keep the `instances`/`activeInstanceID` flows so existing
+ * call sites (DebugPanelView, MainActivity collectors) compile, but [save] always writes back to
+ * the same active slot.
+ */
 class RealtimeProviderStore(private val context: Context) {
-    // coerceInputValues ensures stored instances whose `kind` enum value has been removed (e.g. legacy "GLM") fall back to the field default instead of crashing on load.
+    // coerceInputValues lets stored instances whose `kind` enum value has been removed
+    // (e.g. legacy "GLM") fall back to the field default instead of crashing on load.
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true; coerceInputValues = true }
     private val dir: File get() = File(context.filesDir, "OpenRockyRealtimeProviders").also { it.mkdirs() }
     private val manifestFile: File get() = File(dir, "manifest.json")
@@ -31,6 +38,7 @@ class RealtimeProviderStore(private val context: Context) {
 
     init {
         load()
+        ensureSingleInstance()
     }
 
     val activeInstance: RealtimeProviderInstance?
@@ -40,33 +48,23 @@ class RealtimeProviderStore(private val context: Context) {
         get() {
             val instance = activeInstance ?: return null
             val credential = SecureStore.get(instance.credentialKeychainKey) ?: return null
+            if (credential.isBlank()) return null
             return instance.toConfiguration(credential)
         }
 
+    /** Persist the active instance and credential. If no active instance exists yet, this one
+     *  becomes the active one (and any leftover instances from older multi-instance state get pruned). */
     fun save(instance: RealtimeProviderInstance, credential: String) {
         SecureStore.set(instance.credentialKeychainKey, credential)
-        val file = File(dir, "${instance.id}.json")
-        file.writeText(json.encodeToString(instance))
-        val list = _instances.value.toMutableList()
-        val idx = list.indexOfFirst { it.id == instance.id }
-        if (idx >= 0) list[idx] = instance else list.add(instance)
-        _instances.value = list
-        if (_activeInstanceID.value == null) activate(instance.id)
-        saveManifest()
-    }
-
-    fun activate(id: String) {
-        _activeInstanceID.value = id
-        saveManifest()
-    }
-
-    fun delete(id: String) {
-        SecureStore.delete("realtime_provider_credential_$id")
-        File(dir, "$id.json").delete()
-        _instances.value = _instances.value.filter { it.id != id }
-        if (_activeInstanceID.value == id) {
-            _activeInstanceID.value = _instances.value.firstOrNull()?.id
+        File(dir, "${instance.id}.json").writeText(json.encodeToString(instance))
+        val others = _instances.value.filter { it.id != instance.id }
+        // Drop any stale extras left over from the multi-instance era.
+        for (extra in others) {
+            SecureStore.delete(extra.credentialKeychainKey)
+            File(dir, "${extra.id}.json").delete()
         }
+        _instances.value = listOf(instance)
+        _activeInstanceID.value = instance.id
         saveManifest()
     }
 
@@ -85,10 +83,26 @@ class RealtimeProviderStore(private val context: Context) {
 
         try {
             val manifest = json.decodeFromString<ManifestData>(manifestFile.readText())
-            _activeInstanceID.value = manifest.activeInstanceID
+            _activeInstanceID.value = manifest.activeInstanceID ?: list.firstOrNull()?.id
         } catch (_: Exception) {
             _activeInstanceID.value = list.firstOrNull()?.id
         }
+    }
+
+    /** Collapse to a single instance: drop everything except the active (or first) one. */
+    private fun ensureSingleInstance() {
+        val list = _instances.value
+        if (list.size <= 1) return
+        val keepId = _activeInstanceID.value ?: list.first().id
+        val keep = list.find { it.id == keepId } ?: list.first()
+        for (extra in list) {
+            if (extra.id == keep.id) continue
+            SecureStore.delete(extra.credentialKeychainKey)
+            File(dir, "${extra.id}.json").delete()
+        }
+        _instances.value = listOf(keep)
+        _activeInstanceID.value = keep.id
+        saveManifest()
     }
 
     private fun saveManifest() {

@@ -288,7 +288,7 @@ fun OpenRockyMainApp(
                 ProviderSettingsView(
                     onBack = { navController.popBackStack() },
                     onChatProviders = { navController.navigate(ProviderInstanceListRoute) },
-                    onVoiceProviders = { navController.navigate(RealtimeProviderInstanceListRoute) },
+                    onVoiceProviders = { navController.navigate(RealtimeProviderInstanceEditorRoute) },
                     onCharacters = { navController.navigate(CharacterSettingsRoute) },
                     onSoul = { navController.navigate(SoulSettingsRoute) },
                     onSkills = { navController.navigate(SkillsSettingsRoute) },
@@ -359,27 +359,9 @@ fun OpenRockyMainApp(
                 )
             }
 
-            composable<RealtimeProviderInstanceListRoute> {
-                RealtimeProviderInstanceListView(
-                    instances = realtimeInstances,
-                    activeInstanceId = activeRealtimeId,
-                    onSelect = { viewModel.realtimeProviderStore.activate(it) },
-                    onEdit = { navController.navigate(RealtimeProviderInstanceEditorRoute(instanceId = it)) },
-                    onDelete = { viewModel.realtimeProviderStore.delete(it) },
-                    onAdd = { navController.navigate(RealtimeProviderInstanceEditorRoute()) },
-                    onBack = { navController.popBackStack() }
-                )
-            }
-
-            composable<RealtimeProviderInstanceEditorRoute> { entry ->
-                val route = entry.toRoute<RealtimeProviderInstanceEditorRoute>()
-                val existing = route.instanceId?.let { id -> realtimeInstances.find { it.id == id } }
-                val credential = existing?.let { viewModel.realtimeProviderStore.credentialFor(it) } ?: ""
-
+            composable<RealtimeProviderInstanceEditorRoute> {
                 RealtimeProviderInstanceEditorView(
-                    existingInstance = existing,
-                    existingCredential = credential,
-                    onSave = { inst, cred -> viewModel.realtimeProviderStore.save(inst, cred) },
+                    realtimeProviderStore = viewModel.realtimeProviderStore,
                     onBack = { navController.popBackStack() }
                 )
             }

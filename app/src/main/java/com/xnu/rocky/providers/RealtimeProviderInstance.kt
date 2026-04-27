@@ -19,16 +19,27 @@ data class RealtimeProviderInstance(
     val kind: RealtimeProviderKind = RealtimeProviderKind.OPENAI,
     val modelID: String = "",
     val customHost: String = "",
-    val openaiVoice: String = "alloy"
+    val openaiVoice: String = "alloy",
+    val advancedSettings: RealtimeAdvancedSettings? = null
 ) {
     val credentialKeychainKey: String
         get() = "realtime_provider_credential_$id"
 
-    fun toConfiguration(credential: String): RealtimeProviderConfiguration = RealtimeProviderConfiguration(
-        provider = kind,
-        modelID = modelID.ifBlank { kind.defaultModel },
-        credential = credential,
-        customHost = customHost,
-        openaiVoice = openaiVoice
-    )
+    val effectiveAdvancedSettings: RealtimeAdvancedSettings
+        get() = advancedSettings ?: RealtimeAdvancedSettings.DEFAULT
+
+    fun toConfiguration(credential: String): RealtimeProviderConfiguration {
+        val advanced = effectiveAdvancedSettings
+        // Advanced settings are the source of truth for the realtime model — top-level modelID
+        // is treated as a legacy hint, kept in sync below.
+        val resolvedModel = advanced.realtimeModel.ifBlank { modelID.ifBlank { kind.defaultModel } }
+        return RealtimeProviderConfiguration(
+            provider = kind,
+            modelID = resolvedModel,
+            credential = credential,
+            customHost = customHost,
+            openaiVoice = openaiVoice,
+            advancedSettings = advanced
+        )
+    }
 }

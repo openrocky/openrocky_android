@@ -306,6 +306,23 @@ class SessionRuntime(
             is RealtimeEvent.ErrorDetailed -> handleVoiceError(event.detail)
             is RealtimeEvent.AssistantAudioChunk -> {}
             is RealtimeEvent.AssistantAudioDone -> {}
+            is RealtimeEvent.UsageReported -> {
+                val cfg = realtimeProviderStore.activeConfiguration
+                if (cfg != null) {
+                    usageService.record(
+                        provider = cfg.provider.displayName,
+                        model = cfg.modelID,
+                        category = "voice",
+                        promptTokens = event.inputTokens,
+                        completionTokens = event.outputTokens
+                    )
+                }
+                LogManager.info(
+                    "[VOICE] usage in=${event.inputTokens} out=${event.outputTokens} " +
+                        "audio_in=${event.inputAudioTokens} audio_out=${event.outputAudioTokens}",
+                    "Voice"
+                )
+            }
         }
     }
 

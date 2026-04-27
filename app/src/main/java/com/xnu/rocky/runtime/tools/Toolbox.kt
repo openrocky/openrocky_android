@@ -47,12 +47,40 @@ class Toolbox(
     private val builtInToolStore = BuiltInToolStore(context)
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * Realtime tool surface — intentionally small.
+     *
+     * The OpenAI Realtime model degrades when the tool list grows past a dozen entries; it also
+     * tends to over-summarize when many overlapping options compete. So we expose only fast,
+     * single-shot local actions plus `delegate-task`, and route everything else (web search,
+     * shell/python, browser, multi-step composition, custom skills) to the chat-provider
+     * sub-agent through delegate-task. Mirrors iOS `OpenRockyToolbox.realtimeToolWhitelist`
+     * with `apple-` → `android-` prefix swaps.
+     */
+    private val realtimeToolWhitelist = setOf(
+        "delegate-task",
+        "android-location",
+        "timer",
+        "android-alarm",
+        "android-calendar-list",
+        "android-calendar-create",
+        "android-reminder-list",
+        "android-reminder-create",
+        "notification-schedule",
+        "open-url",
+        "memory_get",
+        "memory_write",
+        "camera-capture",
+        "photo-pick",
+        "file-pick"
+    )
+
     fun chatToolDefinitions(): List<ToolDefinition> {
         return allToolDefinitions().filter { builtInToolStore.isEnabled(it.function.name) }
     }
 
     fun realtimeToolDefinitions(): List<ToolDefinition> {
-        return chatToolDefinitions()
+        return chatToolDefinitions().filter { realtimeToolWhitelist.contains(it.function.name) }
     }
 
     fun subagentToolDefinitions(allowedTools: Set<String>? = null): List<ToolDefinition> {

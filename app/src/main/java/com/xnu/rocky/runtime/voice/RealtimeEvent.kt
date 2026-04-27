@@ -22,6 +22,16 @@ sealed class RealtimeEvent {
     data object AssistantAudioDone : RealtimeEvent()
     data class ToolCallRequested(val name: String, val arguments: String, val callID: String) : RealtimeEvent()
 
+    /** Real token usage parsed from `response.done`. Mirrors iOS `usageReported` — replaces
+     *  the prior estimate-based metering. */
+    data class UsageReported(
+        val inputTokens: Int,
+        val outputTokens: Int,
+        val totalTokens: Int,
+        val inputAudioTokens: Int,
+        val outputAudioTokens: Int
+    ) : RealtimeEvent()
+
     /** Free-form error string. Kept for backwards-compat with existing call sites.
      *  New code should prefer [ErrorDetailed] so the UI can map severity to the right affordance. */
     data class Error(val message: String) : RealtimeEvent()

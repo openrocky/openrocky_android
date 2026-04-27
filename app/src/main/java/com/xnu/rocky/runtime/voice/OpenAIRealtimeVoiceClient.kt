@@ -11,6 +11,7 @@ package com.xnu.rocky.runtime.voice
 
 import android.content.Context
 import com.xnu.rocky.providers.RealtimeProviderConfiguration
+import com.xnu.rocky.providers.TurnDetection
 import com.xnu.rocky.runtime.CharacterStore
 import com.xnu.rocky.runtime.LogManager
 import com.xnu.rocky.runtime.tools.Toolbox
@@ -46,6 +47,13 @@ class OpenAIRealtimeVoiceClient(
 
     @Volatile
     private var emitEvent: ((RealtimeEvent) -> Unit)? = null
+
+    /** Tracked from `response.output_item.added`. Truncate frames must reference it. */
+    @Volatile
+    private var currentAssistantItemId: String? = null
+    /** Wall-clock anchor for "how much assistant audio has played" — set when audio first arrives. */
+    @Volatile
+    private var assistantAudioStartMs: Long = 0L
 
     override suspend fun connect(): Flow<RealtimeEvent> = callbackFlow {
         emitEvent = { event -> trySend(event) }
@@ -271,6 +279,45 @@ class OpenAIRealtimeVoiceClient(
                 }
                 "input_audio_buffer.speech_started" -> {
                     emitEvent?.invoke(RealtimeEvent.InputSpeechStarted)
+                    // User barge-in: cancel any in-flight assistant response and truncate the audio
+                    // history at the point the user actually heard. Mirrors iOS realtime client.
+                    val itemId = currentAssistantItemId
+                    if (itemId != null) {
+                        val played = (System.currentTimeMillis() - assistantAudioStartMs).coerceAtLeast(0L)
+                        sendCancelResponse()
+                        sendTruncate(itemId, played)
+                        currentAssistantItemId = null
+                    }
+                }
+                "response.output_item.added" -> {
+                    val item = event["item"]?.jsonObject
+                    val itemId = item?.get("id")?.jsonPrimitive?.contentOrNull
+                    val role = item?.get("role")?.jsonPrimitive?.contentOrNull
+                    if (role == "assistant" && itemId != null) {
+                        currentAssistantItemId = itemId
+                        assistantAudioStartMs = System.currentTimeMillis()
+                    }
+                }
+                "response.done" -> {
+                    val response = event["response"]?.jsonObject
+                    val usage = response?.get("usage")?.jsonObject
+                    if (usage != null) {
+                        val inputTokens = usage["input_tokens"]?.jsonPrimitive?.intOrNull ?: 0
+                        val outputTokens = usage["output_tokens"]?.jsonPrimitive?.intOrNull ?: 0
+                        val totalTokens = usage["total_tokens"]?.jsonPrimitive?.intOrNull ?: (inputTokens + outputTokens)
+                        val inputAudio = usage["input_token_details"]?.jsonObject
+                            ?.get("audio_tokens")?.jsonPrimitive?.intOrNull ?: 0
+                        val outputAudio = usage["output_token_details"]?.jsonObject
+                            ?.get("audio_tokens")?.jsonPrimitive?.intOrNull ?: 0
+                        emitEvent?.invoke(RealtimeEvent.UsageReported(
+                            inputTokens = inputTokens,
+                            outputTokens = outputTokens,
+                            totalTokens = totalTokens,
+                            inputAudioTokens = inputAudio,
+                            outputAudioTokens = outputAudio
+                        ))
+                    }
+                    currentAssistantItemId = null
                 }
                 "conversation.item.input_audio_transcription.completed" -> {
                     val transcript = event["transcript"]?.jsonPrimitive?.contentOrNull ?: ""
@@ -307,6 +354,7 @@ class OpenAIRealtimeVoiceClient(
     private fun configureSession() {
         val systemPrompt = characterStore.voiceSystemPrompt()
         val toolDefs = toolbox.realtimeToolDefinitions()
+        val advanced = config.advancedSettings
 
         val sessionConfig = buildJsonObject {
             put("type", JsonPrimitive("session.update"))
@@ -315,17 +363,31 @@ class OpenAIRealtimeVoiceClient(
                 put("voice", JsonPrimitive(config.openaiVoice))
                 putJsonArray("modalities") {
                     add(JsonPrimitive("text"))
-                    add(JsonPrimitive("audio"))
+                    if (!advanced.allowTextOnly) add(JsonPrimitive("audio"))
                 }
                 putJsonObject("input_audio_transcription") {
-                    put("model", JsonPrimitive("whisper-1"))
+                    put("model", JsonPrimitive(advanced.transcriptionModel))
+                    advanced.inputLanguage?.takeIf { it.isNotBlank() }?.let {
+                        put("language", JsonPrimitive(it))
+                    }
                 }
                 putJsonObject("turn_detection") {
-                    put("type", JsonPrimitive("server_vad"))
-                    put("threshold", JsonPrimitive(0.5))
-                    put("prefix_padding_ms", JsonPrimitive(300))
-                    put("silence_duration_ms", JsonPrimitive(500))
+                    when (val td = advanced.turnDetection) {
+                        is TurnDetection.Semantic -> {
+                            put("type", JsonPrimitive("semantic_vad"))
+                            put("eagerness", JsonPrimitive(td.eagerness))
+                        }
+                        is TurnDetection.Server -> {
+                            put("type", JsonPrimitive("server_vad"))
+                            put("threshold", JsonPrimitive(td.threshold))
+                            put("prefix_padding_ms", JsonPrimitive(td.prefixPaddingMs))
+                            put("silence_duration_ms", JsonPrimitive(td.silenceDurationMs))
+                        }
+                    }
                 }
+                put("temperature", JsonPrimitive(advanced.temperature))
+                put("max_response_output_tokens", JsonPrimitive(advanced.maxOutputTokens))
+                put("speed", JsonPrimitive(advanced.speed))
                 if (toolDefs.isNotEmpty()) {
                     putJsonArray("tools") {
                         for (tool in toolDefs) {
@@ -400,6 +462,29 @@ class OpenAIRealtimeVoiceClient(
 
     override suspend fun speakText(text: String) {
         sendText(text)
+    }
+
+    override suspend fun cancelResponse() {
+        sendCancelResponse()
+    }
+
+    override suspend fun truncateAssistantAudio(audioEndMs: Long) {
+        val itemId = currentAssistantItemId ?: return
+        sendTruncate(itemId, audioEndMs)
+    }
+
+    private fun sendCancelResponse() {
+        sendDataChannelMessage(buildJsonObject { put("type", JsonPrimitive("response.cancel")) }.toString())
+    }
+
+    private fun sendTruncate(itemId: String, audioEndMs: Long) {
+        val msg = buildJsonObject {
+            put("type", JsonPrimitive("conversation.item.truncate"))
+            put("item_id", JsonPrimitive(itemId))
+            put("content_index", JsonPrimitive(0))
+            put("audio_end_ms", JsonPrimitive(audioEndMs))
+        }
+        sendDataChannelMessage(msg.toString())
     }
 
     private fun cleanupWebRTC() {

@@ -15,6 +15,7 @@ data class RealtimeProviderConfiguration(
     val credential: String,
     val customHost: String = "",
     val openaiVoice: String = "alloy",
+    val advancedSettings: RealtimeAdvancedSettings = RealtimeAdvancedSettings.DEFAULT,
     val characterName: String = "",
     val characterSpeakingStyle: String = "",
     val characterGreeting: String = ""

@@ -417,6 +417,9 @@ class ChatClient(private val config: ProviderConfiguration) {
                     }
                 }
             } else {
+                // OpenAI-flavor health probe. `max_tokens` is rejected by gpt-5 / o-series; use
+                // `max_completion_tokens: 1`. Mirrors iOS `OpenRockyProviderHealthService` after
+                // the 2026-04 settings polish commit.
                 buildJsonObject {
                     put("model", JsonPrimitive(config.modelID))
                     putJsonArray("messages") {
@@ -425,7 +428,7 @@ class ChatClient(private val config: ProviderConfiguration) {
                             put("content", JsonPrimitive("Hi"))
                         }
                     }
-                    put("max_tokens", JsonPrimitive(5))
+                    put("max_completion_tokens", JsonPrimitive(1))
                 }
             }
             val request = Request.Builder()
