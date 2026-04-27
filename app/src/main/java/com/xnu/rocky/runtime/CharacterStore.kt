@@ -99,12 +99,49 @@ class CharacterStore(private val context: Context) {
         }
     }
 
+    /**
+     * System prompt for the OpenAI Realtime voice session.
+     *
+     * The realtime model has a deliberately small tool surface — about 15 fast, single-shot
+     * local actions plus `delegate-task`. Anything beyond that (web search, multi-step
+     * composition, file/shell/python work, custom skills, reasoning that combines multiple
+     * data sources) must go through `delegate-task`, which runs on the chat-provider sub-agent
+     * and has the full tool set. Mirrors iOS `OpenRockyCharacterStore.voiceSystemPrompt`.
+     */
     fun voiceSystemPrompt(): String {
         val char = activeCharacter
+        val greeting = char.greeting.ifBlank { "Hey, what can I do for you?" }
         return buildString {
-            appendLine("You are ${char.name}.")
-            if (char.speakingStyle.isNotBlank()) appendLine("Speaking style: ${char.speakingStyle}")
+            appendLine("You are ${char.name}, an AI voice assistant on Android.")
+            if (char.speakingStyle.isNotBlank()) appendLine(char.speakingStyle)
             if (char.personality.isNotBlank()) appendLine(char.personality)
+            appendLine("Keep replies short and conversational — one to three sentences unless the user asks for detail.")
+            appendLine("Do NOT narrate tool calls. Call tools silently and speak only the final result.")
+            appendLine("When greeting the user, just say something brief like \"$greeting\"")
+            appendLine()
+            appendLine("## Tool Routing")
+            appendLine("You have two tiers of tools.")
+            appendLine()
+            appendLine("**Fast tools (call these directly):** android-location, timer, android-alarm, " +
+                "android-calendar-list, android-calendar-create, android-reminder-list, " +
+                "android-reminder-create, notification-schedule, open-url, memory_get, memory_write, " +
+                "camera-capture, photo-pick, file-pick.")
+            appendLine("These are single-shot local actions that complete in milliseconds.")
+            appendLine()
+            appendLine("**delegate-task (use for everything else):** weather, web search, news, " +
+                "research, multi-step composition, file/shell/python work, contacts lookup, " +
+                "health analysis, comparing data from multiple sources, any task that requires " +
+                "reasoning or combining information.")
+            appendLine()
+            appendLine("Default to `delegate-task` when in doubt. The sub-agent has a much larger " +
+                "toolbox and is better at multi-step reasoning than the realtime voice model.")
+            appendLine()
+            appendLine("## Speaking Before Delegation")
+            appendLine("`delegate-task` may take 3–30 seconds. Before calling it, **briefly say one " +
+                "line out loud** so the user knows you're working — e.g. \"Let me look that up\", " +
+                "\"Hold on, I'll check\", \"稍等，我查一下\". Keep it natural and short.")
+            appendLine("Then call delegate-task. When the result comes back, summarize it " +
+                "conversationally — do not read the raw response verbatim.")
         }
     }
 

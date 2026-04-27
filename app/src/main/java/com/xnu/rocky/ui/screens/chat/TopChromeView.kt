@@ -34,6 +34,7 @@ fun TopChromeView(
     onSettingsClick: () -> Unit,
     onVoiceToggle: () -> Unit,
     onNewChatClick: () -> Unit,
+    onConversationsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val pulseAlpha by rememberInfiniteTransition(label = "pulse").animateFloat(
@@ -83,6 +84,11 @@ fun TopChromeView(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                if (onConversationsClick != null) {
+                    IconButton(onClick = onConversationsClick) {
+                        Icon(Icons.Default.Forum, "Conversations", tint = OpenRockyPalette.muted)
+                    }
+                }
                 IconButton(onClick = onNewChatClick) {
                     Icon(Icons.Default.Add, "New Chat", tint = OpenRockyPalette.muted)
                 }

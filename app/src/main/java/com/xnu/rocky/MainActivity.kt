@@ -166,9 +166,10 @@ fun OpenRockyMainApp(
     } else {
         "Voice not configured"
     }
-    val recentMessages = remember(currentConversationId, session.assistantReply, session.liveTranscript) {
-        currentConversationId?.let { viewModel.storageProvider.loadMessages(it) } ?: emptyList()
-    }
+    val recentMessages by com.xnu.rocky.ui.screens.voice.rememberRecentMessages(
+        storage = viewModel.storageProvider,
+        conversationId = currentConversationId
+    )
 
     LaunchedEffect(Unit) {
         if (viewModel.needsOnboarding) {
@@ -269,7 +270,8 @@ fun OpenRockyMainApp(
                         },
                         onNewChatClick = {
                             currentConversationId = viewModel.sessionRuntime.newConversation()
-                        }
+                        },
+                        onConversationsClick = { showConversationList = true }
                     )
 
                     val messages = currentConversationId?.let {
@@ -277,9 +279,12 @@ fun OpenRockyMainApp(
                     } ?: emptyList()
 
                     ChatScreen(messages = messages, modifier = Modifier.weight(1f))
+                    // Composer is text-only and minimalist — the conversation list lives in the top
+                    // chrome on this route, so the composer doesn't need its own Forum button.
                     com.xnu.rocky.ui.screens.home.ComposerBarStandalone(
                         onSendMessage = { viewModel.sessionRuntime.sendTextMessage(it) },
-                        onConversationsClick = { showConversationList = true }
+                        onConversationsClick = { showConversationList = true },
+                        minimalistLayout = true
                     )
                 }
             }

@@ -23,9 +23,9 @@ enum class RealtimeProviderKind(
 ) {
     OPENAI(
         displayName = "OpenAI Realtime",
-        summary = "gpt-4o-realtime, tool calls + streaming (WebRTC)",
-        defaultModel = "gpt-4o-mini-realtime-preview",
-        suggestedModels = listOf("gpt-4o-mini-realtime-preview", "gpt-4o-realtime-preview"),
+        summary = "gpt-realtime, tool calls + streaming (WebRTC)",
+        defaultModel = "gpt-realtime",
+        suggestedModels = listOf("gpt-realtime", "gpt-realtime-mini", "gpt-4o-realtime-preview", "gpt-4o-mini-realtime-preview"),
         credentialTitle = "API Key",
         credentialPlaceholder = "sk-...",
         guideUrl = "https://platform.openai.com/api-keys"

@@ -12,6 +12,7 @@ package com.xnu.rocky
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.xnu.rocky.providers.ProviderStore
+import com.xnu.rocky.providers.RealtimeAdvancedSettings
 import com.xnu.rocky.providers.RealtimeProviderStore
 import com.xnu.rocky.runtime.*
 import com.xnu.rocky.runtime.skills.CustomSkillStore
@@ -61,7 +62,7 @@ class OpenRockyViewModel(application: Application) : AndroidViewModel(applicatio
             val voiceInstance = com.xnu.rocky.providers.RealtimeProviderInstance(
                 name = "OpenAI Realtime",
                 kind = com.xnu.rocky.providers.RealtimeProviderKind.OPENAI,
-                modelID = "gpt-4o-mini-realtime-preview"
+                modelID = RealtimeAdvancedSettings.DEFAULT_REALTIME_MODEL
             )
             realtimeProviderStore.save(voiceInstance, apiKey)
         }

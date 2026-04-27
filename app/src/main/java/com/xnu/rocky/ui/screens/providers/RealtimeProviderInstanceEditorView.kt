@@ -71,6 +71,7 @@ fun RealtimeProviderInstanceEditorView(
     var showPassword by remember { mutableStateOf(false) }
     var advancedExpanded by remember { mutableStateOf(false) }
     var testState by remember { mutableStateOf<TestState>(TestState.Idle) }
+    val voicePreview = rememberOpenAIVoicePreview()
 
     val draftConfigured = credential.isNotBlank()
 
@@ -127,7 +128,16 @@ fun RealtimeProviderInstanceEditorView(
                 )
             }
             item {
-                VoiceSection(selectedVoice = openaiVoice, onSelect = { openaiVoice = it })
+                VoiceSection(
+                    selectedVoice = openaiVoice,
+                    onSelect = { openaiVoice = it },
+                    onPreview = { voice ->
+                        voicePreview.toggle(voice, credential.trim(), customHost.trim())
+                    },
+                    playingVoice = voicePreview.playingVoice,
+                    previewLoading = voicePreview.loading,
+                    previewError = voicePreview.error
+                )
             }
             item {
                 CustomHostSection(value = customHost, onChange = { customHost = it })
@@ -223,21 +233,72 @@ private fun CredentialSection(
 }
 
 @Composable
-private fun VoiceSection(selectedVoice: String, onSelect: (String) -> Unit) {
+private fun VoiceSection(
+    selectedVoice: String,
+    onSelect: (String) -> Unit,
+    onPreview: (String) -> Unit,
+    playingVoice: String?,
+    previewLoading: Boolean,
+    previewError: String?
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Voice", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = OpenRockyPalette.muted)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             OpenAIVoice.entries.forEach { voice ->
-                FilterChip(
-                    selected = selectedVoice == voice.id,
-                    onClick = { onSelect(voice.id) },
-                    label = { Text(voice.displayName, fontSize = 12.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = OpenRockyPalette.accent.copy(alpha = 0.2f),
-                        containerColor = OpenRockyPalette.cardElevated
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(OpenRockyPalette.cardElevated)
+                        .clickable { onSelect(voice.id) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        if (selectedVoice == voice.id) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                        null,
+                        tint = if (selectedVoice == voice.id) OpenRockyPalette.accent else OpenRockyPalette.muted,
+                        modifier = Modifier.size(20.dp)
                     )
-                )
+                    Text(
+                        voice.displayName,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = OpenRockyPalette.text,
+                        modifier = Modifier.weight(1f)
+                    )
+                    val isPlaying = playingVoice == voice.id
+                    val isLoading = isPlaying && previewLoading
+                    IconButton(
+                        onClick = { onPreview(voice.id) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        when {
+                            isLoading -> CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = OpenRockyPalette.accent
+                            )
+                            isPlaying -> Icon(
+                                Icons.Default.StopCircle,
+                                "Stop preview",
+                                tint = OpenRockyPalette.warning,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            else -> Icon(
+                                Icons.Default.PlayCircle,
+                                "Play preview",
+                                tint = OpenRockyPalette.accent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
             }
+        }
+        if (!previewError.isNullOrBlank()) {
+            Text(previewError, fontSize = 11.sp, color = OpenRockyPalette.error)
         }
     }
 }
