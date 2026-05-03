@@ -79,6 +79,16 @@ class SessionRuntime(
                 addTimeline(TimelineKind.TOOL,
                     "▸ Subtask ${event.subtaskIndex + 1}/${event.totalCount}: ${event.description.take(120)}")
             }
+            is SubagentEvent.SubtaskThinking -> {
+                // Activity ping while the chat model writes/reasons before any
+                // tool call lands. Status only — no timeline entry, since
+                // multiple turns would otherwise crowd the buffer.
+                _statusText.value = if (event.turn == 0) {
+                    "Agent is thinking..."
+                } else {
+                    "Agent is thinking (turn ${event.turn + 1})..."
+                }
+            }
             is SubagentEvent.ToolStarted -> {
                 val prefix = if (event.isSkill) "skill" else "tool"
                 _statusText.value = "Calling $prefix `${event.name}`..."
@@ -347,12 +357,23 @@ class SessionRuntime(
                 updateSession { it.copy(mode = SessionMode.EXECUTING) }
             }
             is RealtimeEvent.Error -> {
-                _statusText.value = "Error: ${event.message}"
+                // Triage common failures so the status line tells the user what to
+                // do instead of dumping a raw error body. Timeline still records the
+                // original message for diagnostic purposes.
+                val hint = com.xnu.rocky.runtime.voice.VoiceErrorTriage.hint(event.message)
+                _statusText.value = hint ?: "Error: ${event.message}"
+                addTimeline(TimelineKind.SYSTEM, event.message)
                 LogManager.error(event.message, "Voice")
             }
             is RealtimeEvent.ErrorDetailed -> handleVoiceError(event.detail)
             is RealtimeEvent.AssistantAudioChunk -> {}
             is RealtimeEvent.AssistantAudioDone -> {}
+            is RealtimeEvent.Disconnected -> {
+                // Bridge already drives status messages and reconnect attempts;
+                // on the session side just reflect that the live runtime is no
+                // longer attached so the UI stops claiming we're listening.
+                updateSession { it.copy(mode = SessionMode.READY) }
+            }
             is RealtimeEvent.UsageReported -> {
                 val cfg = realtimeProviderStore.activeConfiguration
                 if (cfg != null) {
@@ -383,7 +404,11 @@ class SessionRuntime(
             "Session error [${detail.severity}] action=${detail.actionHint}: ${detail.message}",
             "Voice"
         )
-        _statusText.value = "$prefix ${detail.message}"
+        // Try to map the raw message to a one-line action hint; fall back to the
+        // original text. Timeline keeps the raw message for debugging.
+        val hint = com.xnu.rocky.runtime.voice.VoiceErrorTriage.hint(detail.message)
+        _statusText.value = "$prefix ${hint ?: detail.message}"
+        addTimeline(TimelineKind.SYSTEM, detail.message)
         if (detail.severity == com.xnu.rocky.runtime.voice.VoiceErrorSeverity.Fatal) {
             updateSession { it.copy(mode = SessionMode.READY) }
         }

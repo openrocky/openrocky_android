@@ -420,11 +420,18 @@ class Toolbox(
             val tools = obj["tools"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toSet()
             SubagentTask(description = description, allowedTools = tools)
         }.orEmpty()
+        // Optional per-subagent overrides — clamped inside SubagentRuntime so
+        // the realtime loop can't be tied up with absurd budgets.
+        val timeoutMillis = args["max_seconds"]?.jsonPrimitive?.doubleOrNull
+            ?.let { (it * 1000.0).toLong() }
+            ?: SubagentRuntime.DEFAULT_TIMEOUT_MS
+        val maxTurns = args["max_turns"]?.jsonPrimitive?.intOrNull ?: SubagentRuntime.DEFAULT_MAX_TURNS
 
         val runtime = SubagentRuntime(
             toolbox = this,
             configuration = config.normalized(),
-            timeoutMillis = 60_000L,
+            timeoutMillis = timeoutMillis,
+            maxTurns = maxTurns,
             onEvent = subagentEventHandler
         )
         val result = runtime.execute(task, subtasks, contextText)
@@ -898,6 +905,14 @@ class Toolbox(
                     putJsonObject("context") {
                         put("type", JsonPrimitive("string"))
                         put("description", JsonPrimitive("Relevant context for subagent execution"))
+                    }
+                    putJsonObject("max_seconds") {
+                        put("type", JsonPrimitive("number"))
+                        put("description", JsonPrimitive("Optional per-subagent timeout in seconds. Default 60, max 180. Raise only for genuinely deep work — long values delay the spoken reply."))
+                    }
+                    putJsonObject("max_turns") {
+                        put("type", JsonPrimitive("integer"))
+                        put("description", JsonPrimitive("Optional per-subagent tool-use round limit. Default 10, max 20. Raise when the task needs many sequential tool calls."))
                     }
                 }
                 putJsonArray("required") { add(JsonPrimitive("task")) }

@@ -51,6 +51,24 @@ class OpenAIRealtimeVoiceClient(
     @Volatile
     private var emitEvent: ((RealtimeEvent) -> Unit)? = null
 
+    /**
+     * Captured producer-scope close hook. The WebRTC observers fire on internal
+     * threads, not our flow's coroutine, so we need an explicit way to terminate
+     * the channelFlow when the transport is dead. Set in connect(), called from
+     * ICE FAILED / unexpected data-channel close.
+     */
+    @Volatile
+    private var closeChannel: (() -> Unit)? = null
+
+    /**
+     * Set when the bridge asks us to disconnect, so the ICE / data-channel
+     * teardown path can distinguish a graceful close from a transport drop.
+     * Drops emit [RealtimeEvent.Disconnected] so the bridge can attempt
+     * reconnect-with-backoff; manual closes do not.
+     */
+    @Volatile
+    private var isManualDisconnect: Boolean = false
+
     /** Tracked from `response.output_item.added`. Truncate frames must reference it. */
     @Volatile
     private var currentAssistantItemId: String? = null
@@ -84,6 +102,8 @@ class OpenAIRealtimeVoiceClient(
 
     override suspend fun connect(): Flow<RealtimeEvent> = callbackFlow {
         emitEvent = { event -> trySend(event) }
+        closeChannel = { close() }
+        isManualDisconnect = false
 
         trySend(RealtimeEvent.Status("Initializing WebRTC..."))
 
@@ -122,6 +142,9 @@ class OpenAIRealtimeVoiceClient(
                 LogManager.info("ICE connection state: $state", TAG)
                 when (state) {
                     PeerConnection.IceConnectionState.DISCONNECTED -> {
+                        // ICE may recover on its own; surface as a transient hint
+                        // and let the bridge wait a moment before treating this as
+                        // a real drop.
                         emitEvent?.invoke(RealtimeEvent.ErrorDetailed(VoiceError(
                             severity = VoiceErrorSeverity.Transient,
                             message = "WebRTC disconnected — retrying…",
@@ -129,11 +152,13 @@ class OpenAIRealtimeVoiceClient(
                         )))
                     }
                     PeerConnection.IceConnectionState.FAILED -> {
-                        emitEvent?.invoke(RealtimeEvent.ErrorDetailed(VoiceError(
-                            severity = VoiceErrorSeverity.Fatal,
-                            message = "WebRTC connection failed",
-                            actionHint = VoiceErrorAction.Retry
-                        )))
+                        // Hard transport drop — emit Disconnected so the bridge
+                        // can rebuild, then close the channel so cleanupWebRTC()
+                        // disposes this dead PC before the new client comes up.
+                        if (!isManualDisconnect) {
+                            emitEvent?.invoke(RealtimeEvent.Disconnected)
+                        }
+                        closeChannel?.invoke()
                     }
                     else -> {}
                 }
@@ -179,9 +204,20 @@ class OpenAIRealtimeVoiceClient(
         dataChannel?.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(amount: Long) {}
             override fun onStateChange() {
-                LogManager.info("DataChannel state: ${dataChannel?.state()}", TAG)
-                if (dataChannel?.state() == DataChannel.State.OPEN) {
-                    configureSession()
+                val state = dataChannel?.state()
+                LogManager.info("DataChannel state: $state", TAG)
+                when (state) {
+                    DataChannel.State.OPEN -> configureSession()
+                    DataChannel.State.CLOSED -> {
+                        // The realtime data channel is the session's lifeline.
+                        // If it closes without a manual stop, treat it the same
+                        // as an ICE drop so the bridge can attempt reconnect.
+                        if (!isManualDisconnect) {
+                            emitEvent?.invoke(RealtimeEvent.Disconnected)
+                        }
+                        closeChannel?.invoke()
+                    }
+                    else -> {}
                 }
             }
             override fun onMessage(buffer: DataChannel.Buffer) {
@@ -452,6 +488,10 @@ class OpenAIRealtimeVoiceClient(
     }
 
     override suspend fun disconnect() {
+        // Mark before tearing down so the ICE FAILED / data-channel-closed
+        // observers don't emit Disconnected and trigger a reconnect for what
+        // is actually a graceful stop.
+        isManualDisconnect = true
         cleanupWebRTC()
     }
 
@@ -543,6 +583,7 @@ class OpenAIRealtimeVoiceClient(
         factory?.dispose()
         factory = null
         emitEvent = null
+        closeChannel = null
     }
 
     // MARK: - Audio focus (interruption handling)

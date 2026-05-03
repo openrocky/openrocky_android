@@ -60,6 +60,13 @@ sealed class SubagentEvent {
         val totalCount: Int,
         val description: String
     ) : SubagentEvent()
+    /**
+     * First non-empty text chunk arrived from the chat model on a turn. Used
+     * to surface activity during the 5–20s the model can spend writing or
+     * reasoning before any tool call — without it the timeline appears stuck
+     * between SubtaskStarted and the first ToolStarted.
+     */
+    data class SubtaskThinking(val taskID: String, val turn: Int) : SubagentEvent()
     data class ToolStarted(
         val taskID: String,
         val name: String,
@@ -90,10 +97,23 @@ sealed class SubagentEvent {
 class SubagentRuntime(
     private val toolbox: Toolbox,
     private val configuration: ProviderConfiguration,
-    private val timeoutMillis: Long = 60_000L,
+    timeoutMillis: Long = DEFAULT_TIMEOUT_MS,
+    maxTurns: Int = DEFAULT_MAX_TURNS,
     private val onEvent: ((SubagentEvent) -> Unit)? = null
 ) {
+    /** Clamped per-subagent budgets. The model can request more headroom for
+     *  genuinely deep tasks via delegate-task's max_seconds/max_turns args, but
+     *  can't ask for arbitrary budgets that would tie up the voice loop. */
+    private val timeoutMillis: Long = timeoutMillis.coerceIn(5_000L, TIMEOUT_CEILING_MS)
+    private val maxTurns: Int = maxTurns.coerceIn(1, MAX_TURNS_CEILING)
+
     companion object {
+        const val DEFAULT_TIMEOUT_MS: Long = 60_000L
+        const val DEFAULT_MAX_TURNS: Int = 10
+        /** Hard ceilings so the realtime loop can't be tied up indefinitely. */
+        const val TIMEOUT_CEILING_MS: Long = 180_000L
+        const val MAX_TURNS_CEILING: Int = 20
+
         /** Compact one-line preview of JSON args. Newlines collapsed, truncated to keep
          *  the timeline readable. No redaction — tool args are model-generated. */
         fun previewArguments(arguments: String): String {
@@ -198,16 +218,27 @@ class SubagentRuntime(
             ChatMessage(role = "user", content = task.description)
         )
         val toolsUsed = mutableListOf<String>()
+        // Per-tool success log. Used at the end to decide whether the subtask as
+        // a whole succeeded — if every invoked tool failed, the realtime model
+        // would otherwise read back a confident "done" against zero real work.
+        val toolOutcomes = mutableListOf<Boolean>()
         var finalText = ""
-        val maxTurns = 10
+        val turnsBudget = this.maxTurns
 
-        for (turn in 0 until maxTurns) {
+        for (turn in 0 until turnsBudget) {
             val accumulatedToolCalls = mutableMapOf<Int, ToolCallData>()
             val contentBuffer = StringBuilder()
             var hasToolCalls = false
+            var didEmitThinking = false
 
             client.streamChat(messages, tools).collect { delta ->
-                delta.content?.let { contentBuffer.append(it) }
+                delta.content?.let { text ->
+                    if (text.isNotEmpty() && !didEmitThinking) {
+                        didEmitThinking = true
+                        onEvent?.invoke(SubagentEvent.SubtaskThinking(taskID = task.id, turn = turn))
+                    }
+                    contentBuffer.append(text)
+                }
                 delta.toolCalls?.forEach { tc ->
                     hasToolCalls = true
                     val existing = accumulatedToolCalls.getOrPut(tc.index) {
@@ -260,6 +291,7 @@ class SubagentRuntime(
                 }
                 val toolElapsed = (System.currentTimeMillis() - toolStart) / 1000.0
                 toolsUsed += name
+                toolOutcomes += succeeded
 
                 onEvent?.invoke(SubagentEvent.ToolCompleted(
                     taskID = task.id,
@@ -280,20 +312,30 @@ class SubagentRuntime(
                 )
             }
 
-            if (turn == maxTurns - 1 && finalText.isBlank()) {
-                finalText = contentBuffer.toString()
+            if (turn == turnsBudget - 1 && finalText.isBlank()) {
+                finalText = if (contentBuffer.isNotEmpty()) {
+                    contentBuffer.toString()
+                } else {
+                    "Task completed after $turnsBudget tool-use rounds."
+                }
             }
         }
 
         if (finalText.isBlank()) {
             finalText = "Task completed."
         }
+        // succeeded reflects what actually happened: if the agent invoked any
+        // tools and they all failed, this subtask did not succeed even though
+        // the loop returned cleanly. The realtime model uses this flag when
+        // summarising back to the user — a false positive here would have it
+        // claim work was done that wasn't.
+        val allToolsFailed = toolOutcomes.isNotEmpty() && toolOutcomes.none { it }
         return SubagentResult(
             taskID = task.id,
             summary = extractSummary(finalText),
             details = finalText,
             toolsUsed = toolsUsed,
-            succeeded = true,
+            succeeded = !allToolsFailed,
             elapsedSeconds = 0.0
         )
     }
@@ -301,12 +343,16 @@ class SubagentRuntime(
     private fun buildSystemPrompt(parentContext: String): String {
         return """
             You are a focused task agent within OpenRocky.
-            Complete the assigned task thoroughly using available tools.
-            If tools fail, try alternatives.
-            Start your final answer with one-sentence summary, then details.
-            Do not make up information.
+            - Complete the assigned task thoroughly using available tools.
+            - If tools fail, try alternative approaches.
+            - Keep your final answer concise but complete.
+            - Do NOT make up information. If you cannot get data, say so.
+            - Respond in the same language as the task description. The voice
+              assistant will read your summary back verbatim, so a language
+              mismatch forces it to translate on the fly (extra latency, lost
+              fidelity).
 
-            Context: ${if (parentContext.isBlank()) "None." else parentContext}
+            Context from the conversation: ${if (parentContext.isBlank()) "None provided." else parentContext}
         """.trimIndent()
     }
 

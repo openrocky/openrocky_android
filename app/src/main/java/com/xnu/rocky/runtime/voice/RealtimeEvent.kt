@@ -36,6 +36,11 @@ sealed class RealtimeEvent {
      *  New code should prefer [ErrorDetailed] so the UI can map severity to the right affordance. */
     data class Error(val message: String) : RealtimeEvent()
     data class ErrorDetailed(val detail: VoiceError) : RealtimeEvent()
+
+    /** The transport closed without a manual stop. Emitted exactly once per drop;
+     *  the bridge uses this to drive reconnect-with-backoff so a transient
+     *  Wi-Fi → cell handoff doesn't strand the user with a dead session. */
+    data object Disconnected : RealtimeEvent()
 }
 
 /** Lifecycle classification of a voice-session error. Drives UI affordances:
