@@ -15,6 +15,7 @@ import com.xnu.rocky.providers.ToolDefinition
 import com.xnu.rocky.providers.ToolFunctionDef
 import com.xnu.rocky.runtime.LogManager
 import com.xnu.rocky.runtime.MemoryService
+import com.xnu.rocky.runtime.SubagentEvent
 import com.xnu.rocky.runtime.SubagentRuntime
 import com.xnu.rocky.runtime.SubagentTask
 import kotlinx.serialization.json.*
@@ -24,7 +25,12 @@ class Toolbox(
     private val memoryService: MemoryService
 ) {
     var subagentChatConfiguration: ProviderConfiguration? = null
-    var subagentStatusHandler: ((String) -> Unit)? = null
+    /**
+     * Structured progress events from delegate-task. The session runtime renders
+     * each event as a timeline entry so the user can follow the back-end agent's
+     * per-tool progress while the realtime voice stalls on the model's "稍等".
+     */
+    var subagentEventHandler: ((SubagentEvent) -> Unit)? = null
 
     private val weatherService = WeatherService()
     private val locationService = LocationService(context)
@@ -419,7 +425,7 @@ class Toolbox(
             toolbox = this,
             configuration = config.normalized(),
             timeoutMillis = 60_000L,
-            onStatusUpdate = subagentStatusHandler
+            onEvent = subagentEventHandler
         )
         val result = runtime.execute(task, subtasks, contextText)
 

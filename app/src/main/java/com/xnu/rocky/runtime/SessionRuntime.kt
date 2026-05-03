@@ -55,10 +55,57 @@ class SessionRuntime(
     private val chatHistory = mutableListOf<ChatMessage>()
 
     init {
-        toolbox.subagentStatusHandler = { text ->
-            scope.launch(Dispatchers.Main) { _statusText.value = text }
+        // Wire up subagent progress events from toolbox → session timeline + statusText.
+        // The realtime model calls `delegate-task`, which spawns a sub-agent that
+        // emits structured events tool-by-tool. We render each as a timeline entry
+        // (so the user can watch the back-end agent work) and update statusText so
+        // the live status line reflects the current step. Mirrors iOS handleSubagentEvent.
+        toolbox.subagentEventHandler = { event ->
+            scope.launch(Dispatchers.Main) { handleSubagentEvent(event) }
         }
         syncSubagentChatConfiguration()
+    }
+
+    private fun handleSubagentEvent(event: SubagentEvent) {
+        when (event) {
+            is SubagentEvent.PlanStarted -> {
+                val label = if (event.subtaskCount == 1) "subtask" else "subtasks"
+                _statusText.value = "Delegating ${event.subtaskCount} $label..."
+                addTimeline(TimelineKind.TOOL,
+                    "Delegated task → ${event.subtaskCount} $label: ${event.taskDescription.take(120)}")
+            }
+            is SubagentEvent.SubtaskStarted -> {
+                _statusText.value = "Subtask ${event.subtaskIndex + 1}/${event.totalCount} starting..."
+                addTimeline(TimelineKind.TOOL,
+                    "▸ Subtask ${event.subtaskIndex + 1}/${event.totalCount}: ${event.description.take(120)}")
+            }
+            is SubagentEvent.ToolStarted -> {
+                val prefix = if (event.isSkill) "skill" else "tool"
+                _statusText.value = "Calling $prefix `${event.name}`..."
+                val argsPart = if (event.argsPreview.isEmpty()) "" else " ${event.argsPreview}"
+                addTimeline(TimelineKind.TOOL, "  • [$prefix] ${event.name}$argsPart")
+            }
+            is SubagentEvent.ToolCompleted -> {
+                val prefix = if (event.isSkill) "skill" else "tool"
+                val mark = if (event.succeeded) "✓" else "✗"
+                val elapsedLabel = String.format(Locale.US, "%.1fs", event.elapsedSeconds)
+                _statusText.value = "$mark $prefix `${event.name}` ($elapsedLabel)"
+                val kind = if (event.succeeded) TimelineKind.TOOL else TimelineKind.SYSTEM
+                addTimeline(kind, "    $mark ${event.name} ($elapsedLabel) → ${event.resultPreview}")
+            }
+            is SubagentEvent.SubtaskCompleted -> {
+                val mark = if (event.succeeded) "✓" else "✗"
+                val elapsedLabel = String.format(Locale.US, "%.1fs", event.elapsedSeconds)
+                val kind = if (event.succeeded) TimelineKind.RESULT else TimelineKind.SYSTEM
+                addTimeline(kind, "$mark Subtask done ($elapsedLabel): ${event.summary.take(120)}")
+            }
+            is SubagentEvent.PlanCompleted -> {
+                val elapsedLabel = String.format(Locale.US, "%.1fs", event.elapsedSeconds)
+                _statusText.value = "Delegate-task finished (${event.succeededCount}/${event.totalCount}, $elapsedLabel)."
+                addTimeline(TimelineKind.RESULT,
+                    "Delegate-task complete: ${event.succeededCount}/${event.totalCount} subtasks succeeded in $elapsedLabel")
+            }
+        }
     }
 
     fun setConversation(conversationId: String) {
@@ -349,7 +396,10 @@ class SessionRuntime(
     private fun addTimeline(kind: TimelineKind, text: String) {
         val entry = TimelineEntry(kind = kind, time = timeFormat.format(Date()), text = text)
         updateSession { session ->
-            val timeline = (session.timeline + entry).takeLast(8)
+            // Keep enough recent history that one delegate-task (which can fire
+            // ~6–15 tool events) doesn't immediately push the surrounding speech
+            // and result entries off the buffer. Mirrors iOS cap.
+            val timeline = (session.timeline + entry).takeLast(32)
             session.copy(timeline = timeline)
         }
     }

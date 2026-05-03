@@ -30,8 +30,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Calendar
 import com.xnu.rocky.models.OpenRockySession
 import com.xnu.rocky.models.SessionMode
 import com.xnu.rocky.runtime.ConversationMessage
@@ -46,11 +48,17 @@ private val placeholderAssistantTexts = setOf(
     "OpenRocky is idle. Start voice or send text to attach a live runtime."
 )
 
+// Rocky-specific tips: each one maps to a distinct strength so the home screen
+// advertises depth (focus timer / Health Connect / weather+location / reminders /
+// calendar / delegate-task planning) instead of generic-AI-chatbot prompts.
+// Mirrors iOS OpenRockyVoiceHomeView.tips.
 private val tips = listOf(
     "Try \"Set a 25-minute focus timer\"",
-    "Try \"What's the weather tomorrow?\"",
-    "Try \"Summarize my last email\"",
-    "Try \"Remind me to stretch in 40 minutes\""
+    "Try \"How did I sleep last night?\"",
+    "Try \"Will it rain when I head home?\"",
+    "Try \"Add bread and milk to my reminders\"",
+    "Try \"What's on my calendar tomorrow?\"",
+    "Try \"Plan a weekend trip to Hangzhou\""
 )
 
 private data class TranscriptPair(val id: String, val userText: String?, val assistantText: String?)
@@ -131,6 +139,18 @@ fun VoiceHomeScreen(
                 )
                 Spacer(Modifier.height(6.dp))
 
+                // Orb is always anchored at the bottom (compact) or to the leading
+                // edge (wide). The space above is the info surface: transcript when
+                // a turn is in flight or recent history exists, otherwise a quiet
+                // greeting + rotating tip card. Anchoring the orb avoids the vertical
+                // jump users used to see on the first tap.
+                val triggerVoice: () -> Unit = {
+                    if (!isVoiceActive && !realtimeConfigured) {
+                        showsNotConfiguredAlert = true
+                    } else {
+                        onToggleVoice()
+                    }
+                }
                 if (isWide) {
                     Row(modifier = Modifier
                         .weight(1f)
@@ -142,72 +162,60 @@ fun VoiceHomeScreen(
                             session = session,
                             isMicActive = isVoiceActive,
                             modeTint = modeTint,
-                            tipIndex = tipIndex,
-                            hasAnyTranscript = hasAnyTranscript,
-                            onTriggerVoice = {
-                                if (!isVoiceActive && !realtimeConfigured) {
-                                    showsNotConfiguredAlert = true
-                                } else {
-                                    onToggleVoice()
-                                }
-                            },
+                            onTriggerVoice = triggerVoice,
                             modifier = Modifier.weight(1f)
                         )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        ) {
+                            if (hasAnyTranscript) {
+                                TranscriptFeed(
+                                    pairs = recentPairs,
+                                    liveUserText = liveUserText,
+                                    liveAssistantText = liveAssistantText,
+                                    modeTint = modeTint,
+                                    modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)
+                                )
+                            } else {
+                                IdleHeader(
+                                    tipIndex = tipIndex,
+                                    modeTint = modeTint,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
                         if (hasAnyTranscript) {
                             TranscriptFeed(
                                 pairs = recentPairs,
                                 liveUserText = liveUserText,
                                 liveAssistantText = liveAssistantText,
                                 modeTint = modeTint,
-                                modifier = Modifier.weight(1f).fillMaxHeight().padding(vertical = 12.dp)
+                                modifier = Modifier.fillMaxSize()
                             )
                         } else {
-                            Spacer(Modifier.weight(1f))
+                            IdleHeader(
+                                tipIndex = tipIndex,
+                                modeTint = modeTint,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                     }
-                } else {
-                    if (hasAnyTranscript) {
-                        TranscriptFeed(
-                            pairs = recentPairs,
-                            liveUserText = liveUserText,
-                            liveAssistantText = liveAssistantText,
-                            modeTint = modeTint,
-                            modifier = Modifier.weight(1f).fillMaxWidth()
-                        )
-                        VoiceCanvas(
-                            session = session,
-                            isMicActive = isVoiceActive,
-                            modeTint = modeTint,
-                            tipIndex = tipIndex,
-                            hasAnyTranscript = true,
-                            onTriggerVoice = {
-                                if (!isVoiceActive && !realtimeConfigured) {
-                                    showsNotConfiguredAlert = true
-                                } else {
-                                    onToggleVoice()
-                                }
-                            },
-                            modifier = Modifier.padding(bottom = 28.dp)
-                        )
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                        VoiceCanvas(
-                            session = session,
-                            isMicActive = isVoiceActive,
-                            modeTint = modeTint,
-                            tipIndex = tipIndex,
-                            hasAnyTranscript = false,
-                            onTriggerVoice = {
-                                if (!isVoiceActive && !realtimeConfigured) {
-                                    showsNotConfiguredAlert = true
-                                } else {
-                                    onToggleVoice()
-                                }
-                            }
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Spacer(Modifier.height(32.dp))
-                    }
+                    VoiceCanvas(
+                        session = session,
+                        isMicActive = isVoiceActive,
+                        modeTint = modeTint,
+                        onTriggerVoice = triggerVoice,
+                        modifier = Modifier.padding(bottom = 28.dp)
+                    )
                 }
             }
         }
@@ -322,8 +330,6 @@ private fun VoiceCanvas(
     session: OpenRockySession,
     isMicActive: Boolean,
     modeTint: Color,
-    tipIndex: Int,
-    hasAnyTranscript: Boolean,
     onTriggerVoice: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -379,13 +385,87 @@ private fun VoiceCanvas(
 
         StatusPill(modeTint = modeTint, mode = session.mode, isMicActive = isMicActive)
 
+        // Constant-height container only confirms the mic is hot. The idle tip
+        // lives in IdleHeader now so the canvas itself never resizes.
         Box(modifier = Modifier.height(30.dp), contentAlignment = Alignment.Center) {
-            when {
-                isMicActive && session.mode == SessionMode.LISTENING -> LiveWaveform(modeTint = modeTint)
-                !isMicActive && !hasAnyTranscript -> RotatingTip(tipIndex = tipIndex)
-                else -> {}
+            if (isMicActive && session.mode == SessionMode.LISTENING) {
+                LiveWaveform(modeTint = modeTint)
             }
         }
+    }
+}
+
+/// Sits in the otherwise-empty space above the anchored orb. Calm, glanceable,
+/// and replaced by the transcript feed the moment a turn starts so the orb
+/// itself never moves.
+@Composable
+private fun IdleHeader(
+    tipIndex: Int,
+    modeTint: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Spacer(Modifier.weight(1f))
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                greeting(),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                color = OpenRockyPalette.text.copy(alpha = 0.92f)
+            )
+            Text(
+                "How can I help today?",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = OpenRockyPalette.muted
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        RotatingTipCard(tipIndex = tipIndex, modeTint = modeTint)
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun RotatingTipCard(tipIndex: Int, modeTint: Color) {
+    Surface(
+        color = OpenRockyPalette.cardElevated.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(percent = 50),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, OpenRockyPalette.stroke)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                Icons.Default.AutoAwesome,
+                contentDescription = null,
+                tint = modeTint.copy(alpha = 0.9f),
+                modifier = Modifier.size(12.dp)
+            )
+            Text(
+                tips[tipIndex % tips.size],
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = OpenRockyPalette.text.copy(alpha = 0.82f),
+                maxLines = 2,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+private fun greeting(): String {
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    return when (hour) {
+        in 5..11 -> "Good morning"
+        in 12..17 -> "Good afternoon"
+        else -> "Good evening"
     }
 }
 
@@ -477,16 +557,6 @@ private fun LiveWaveform(modeTint: Color) {
             )
         }
     }
-}
-
-@Composable
-private fun RotatingTip(tipIndex: Int) {
-    Text(
-        tips[tipIndex % tips.size],
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        color = OpenRockyPalette.muted
-    )
 }
 
 @Composable

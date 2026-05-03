@@ -44,12 +44,76 @@ data class DelegateTaskResult(
     val totalElapsedSeconds: Double
 )
 
+/**
+ * Structured progress events emitted while a delegate-task is in flight.
+ * Subscribers (the session runtime) translate these into timeline entries so
+ * the user can watch the back-end agent work tool-by-tool instead of staring
+ * at a blank "delegating..." line until the final summary lands.
+ *
+ * Mirrors iOS OpenRockySubagentEvent.
+ */
+sealed class SubagentEvent {
+    data class PlanStarted(val subtaskCount: Int, val taskDescription: String) : SubagentEvent()
+    data class SubtaskStarted(
+        val taskID: String,
+        val subtaskIndex: Int,
+        val totalCount: Int,
+        val description: String
+    ) : SubagentEvent()
+    data class ToolStarted(
+        val taskID: String,
+        val name: String,
+        val isSkill: Boolean,
+        val argsPreview: String
+    ) : SubagentEvent()
+    data class ToolCompleted(
+        val taskID: String,
+        val name: String,
+        val isSkill: Boolean,
+        val succeeded: Boolean,
+        val resultPreview: String,
+        val elapsedSeconds: Double
+    ) : SubagentEvent()
+    data class SubtaskCompleted(
+        val taskID: String,
+        val succeeded: Boolean,
+        val summary: String,
+        val elapsedSeconds: Double
+    ) : SubagentEvent()
+    data class PlanCompleted(
+        val elapsedSeconds: Double,
+        val succeededCount: Int,
+        val totalCount: Int
+    ) : SubagentEvent()
+}
+
 class SubagentRuntime(
     private val toolbox: Toolbox,
     private val configuration: ProviderConfiguration,
     private val timeoutMillis: Long = 60_000L,
-    private val onStatusUpdate: ((String) -> Unit)? = null
+    private val onEvent: ((SubagentEvent) -> Unit)? = null
 ) {
+    companion object {
+        /** Compact one-line preview of JSON args. Newlines collapsed, truncated to keep
+         *  the timeline readable. No redaction — tool args are model-generated. */
+        fun previewArguments(arguments: String): String {
+            val collapsed = arguments
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .trim()
+            return if (collapsed.length <= 80) collapsed else collapsed.take(80) + "..."
+        }
+
+        /** Compact one-line preview of a tool result for the timeline. */
+        fun previewResult(result: String): String {
+            val collapsed = result
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .trim()
+            return if (collapsed.length <= 120) collapsed else collapsed.take(120) + "..."
+        }
+    }
+
     suspend fun execute(
         taskDescription: String,
         subtasks: List<SubagentTask>,
@@ -57,16 +121,21 @@ class SubagentRuntime(
     ): DelegateTaskResult {
         val start = System.currentTimeMillis()
         val tasks = if (subtasks.isEmpty()) listOf(SubagentTask(description = taskDescription)) else subtasks
-        onStatusUpdate?.invoke("Delegating ${tasks.size} subtask${if (tasks.size > 1) "s" else ""}...")
+        onEvent?.invoke(SubagentEvent.PlanStarted(subtaskCount = tasks.size, taskDescription = taskDescription))
 
+        val totalCount = tasks.size
         val results = coroutineScope {
-            tasks.map { task ->
-                async { runSingleAgent(task, context) }
+            tasks.mapIndexed { index, task ->
+                async { runSingleAgent(task, index, totalCount, context) }
             }.awaitAll()
         }
 
-        onStatusUpdate?.invoke("All subtasks completed.")
         val elapsed = (System.currentTimeMillis() - start) / 1000.0
+        onEvent?.invoke(SubagentEvent.PlanCompleted(
+            elapsedSeconds = elapsed,
+            succeededCount = results.count { it.succeeded },
+            totalCount = results.size
+        ))
         return DelegateTaskResult(
             taskDescription = taskDescription,
             results = results,
@@ -74,9 +143,20 @@ class SubagentRuntime(
         )
     }
 
-    private suspend fun runSingleAgent(task: SubagentTask, parentContext: String): SubagentResult {
+    private suspend fun runSingleAgent(
+        task: SubagentTask,
+        subtaskIndex: Int,
+        totalCount: Int,
+        parentContext: String
+    ): SubagentResult {
         val start = System.currentTimeMillis()
-        return try {
+        onEvent?.invoke(SubagentEvent.SubtaskStarted(
+            taskID = task.id,
+            subtaskIndex = subtaskIndex,
+            totalCount = totalCount,
+            description = task.description
+        ))
+        val outcome: SubagentResult = try {
             withTimeout(timeoutMillis) {
                 executeAgentLoop(task, parentContext).copy(
                     elapsedSeconds = (System.currentTimeMillis() - start) / 1000.0
@@ -101,6 +181,13 @@ class SubagentRuntime(
                 elapsedSeconds = (System.currentTimeMillis() - start) / 1000.0
             )
         }
+        onEvent?.invoke(SubagentEvent.SubtaskCompleted(
+            taskID = outcome.taskID,
+            succeeded = outcome.succeeded,
+            summary = outcome.summary,
+            elapsedSeconds = outcome.elapsedSeconds
+        ))
+        return outcome
     }
 
     private suspend fun executeAgentLoop(task: SubagentTask, parentContext: String): SubagentResult {
@@ -152,16 +239,43 @@ class SubagentRuntime(
             )
 
             for (toolCall in toolCallsList) {
-                if (toolCall.function.name.isBlank()) continue
-                onStatusUpdate?.invoke("Agent: ${toolCall.function.name}...")
-                val result = toolbox.execute(toolCall.function.name, toolCall.function.arguments)
-                toolsUsed += toolCall.function.name
+                val name = toolCall.function.name
+                if (name.isBlank()) continue
+                val isSkill = name.startsWith("skill-")
+                val argsPreview = previewArguments(toolCall.function.arguments)
+                onEvent?.invoke(SubagentEvent.ToolStarted(
+                    taskID = task.id,
+                    name = name,
+                    isSkill = isSkill,
+                    argsPreview = argsPreview
+                ))
+
+                val toolStart = System.currentTimeMillis()
+                var succeeded = true
+                val result: String = try {
+                    toolbox.execute(name, toolCall.function.arguments)
+                } catch (e: Exception) {
+                    succeeded = false
+                    """{"error":"${e.message ?: "Unknown error"}"}"""
+                }
+                val toolElapsed = (System.currentTimeMillis() - toolStart) / 1000.0
+                toolsUsed += name
+
+                onEvent?.invoke(SubagentEvent.ToolCompleted(
+                    taskID = task.id,
+                    name = name,
+                    isSkill = isSkill,
+                    succeeded = succeeded,
+                    resultPreview = previewResult(result),
+                    elapsedSeconds = toolElapsed
+                ))
+
                 messages.add(
                     ChatMessage(
                         role = "tool",
                         content = result,
                         tool_call_id = toolCall.id,
-                        name = toolCall.function.name
+                        name = name
                     )
                 )
             }

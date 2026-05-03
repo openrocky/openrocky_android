@@ -10,6 +10,9 @@
 package com.xnu.rocky.runtime.voice
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import com.xnu.rocky.providers.RealtimeProviderConfiguration
 import com.xnu.rocky.providers.TurnDetection
 import com.xnu.rocky.runtime.CharacterStore
@@ -54,6 +57,30 @@ class OpenAIRealtimeVoiceClient(
     /** Wall-clock anchor for "how much assistant audio has played" — set when audio first arrives. */
     @Volatile
     private var assistantAudioStartMs: Long = 0L
+    /**
+     * True between `response.created` and `response.done`. Gates `cancelResponse()`
+     * so we don't fire `response.cancel` when nothing is in flight — the server
+     * returns `response_cancel_not_active` and (more importantly) the race with the
+     * server's own `turn_detected` cancel makes subsequent `speech_stopped`
+     * events stop firing. Mirrors iOS isResponseInProgress.
+     */
+    @Volatile
+    private var isResponseInProgress: Boolean = false
+
+    /**
+     * Audio focus request held for the lifetime of a connected session. Without
+     * this, phone calls / Google Assistant / nav prompts silently leave our mic
+     * streaming over WebRTC while the user can't hear or speak.
+     */
+    private var audioFocusRequest: AudioFocusRequest? = null
+    /**
+     * Wall-clock time when the most recent transient audio-focus loss began.
+     * Drives the auto-resume window: a brief blip (≤10s, e.g. CarPlay nav prompt)
+     * resumes silently; a long one (real phone call) waits for an explicit tap.
+     * Mirrors iOS interruptionStartedAt.
+     */
+    @Volatile
+    private var interruptionStartedAtMs: Long = 0L
 
     override suspend fun connect(): Flow<RealtimeEvent> = callbackFlow {
         emitEvent = { event -> trySend(event) }
@@ -134,6 +161,12 @@ class OpenAIRealtimeVoiceClient(
             close()
             return@callbackFlow
         }
+
+        // Request audio focus so phone calls / nav prompts / Google Assistant
+        // notify us when they take over the audio device. The focus listener
+        // mutes the mic + cancels in-flight responses on transient loss, then
+        // auto-resumes if iOS-equivalent shouldResume conditions hold.
+        requestAudioFocus()
 
         // Add local audio track to peer connection
         pc.addTrack(localAudioTrack, listOf("audio-stream"))
@@ -278,16 +311,18 @@ class OpenAIRealtimeVoiceClient(
                     ))
                 }
                 "input_audio_buffer.speech_started" -> {
+                    // Server-VAD path only: when the server detects speech mid-response
+                    // it auto-cancels the in-flight turn with `turn_detected` and stops
+                    // streaming audio. Sending our own `response.cancel` + truncate
+                    // here races that — the cancel hits `response_cancel_not_active`
+                    // and, more importantly, the server stops firing `speech_stopped`
+                    // for subsequent utterances ("only hears me speak once" symptom).
+                    // The remote audio track quiets naturally as the server stops
+                    // generating, so we don't need to silence anything client-side.
                     emitEvent?.invoke(RealtimeEvent.InputSpeechStarted)
-                    // User barge-in: cancel any in-flight assistant response and truncate the audio
-                    // history at the point the user actually heard. Mirrors iOS realtime client.
-                    val itemId = currentAssistantItemId
-                    if (itemId != null) {
-                        val played = (System.currentTimeMillis() - assistantAudioStartMs).coerceAtLeast(0L)
-                        sendCancelResponse()
-                        sendTruncate(itemId, played)
-                        currentAssistantItemId = null
-                    }
+                }
+                "response.created" -> {
+                    isResponseInProgress = true
                 }
                 "response.output_item.added" -> {
                     val item = event["item"]?.jsonObject
@@ -318,6 +353,7 @@ class OpenAIRealtimeVoiceClient(
                         ))
                     }
                     currentAssistantItemId = null
+                    isResponseInProgress = false
                 }
                 "conversation.item.input_audio_transcription.completed" -> {
                     val transcript = event["transcript"]?.jsonPrimitive?.contentOrNull ?: ""
@@ -465,6 +501,12 @@ class OpenAIRealtimeVoiceClient(
     }
 
     override suspend fun cancelResponse() {
+        // Idempotent guard: only fire if the server thinks a response is in
+        // flight. Without this, calling cancel between turns returns
+        // `response_cancel_not_active` and (more importantly) can stall the
+        // server's VAD state machine. See the input_audio_buffer.speech_started
+        // handler for the full rationale.
+        if (!isResponseInProgress) return
         sendCancelResponse()
     }
 
@@ -489,6 +531,7 @@ class OpenAIRealtimeVoiceClient(
 
     private fun cleanupWebRTC() {
         LogManager.info("Cleaning up WebRTC resources", TAG)
+        abandonAudioFocus()
         dataChannel?.close()
         dataChannel = null
         peerConnection?.close()
@@ -500,5 +543,76 @@ class OpenAIRealtimeVoiceClient(
         factory?.dispose()
         factory = null
         emitEvent = null
+    }
+
+    // MARK: - Audio focus (interruption handling)
+
+    /// Auto-resume cap: a brief audio-focus loss (CarPlay nav prompt, quick
+    /// Google Assistant query) silently resumes; longer ones (a real phone call)
+    /// require an explicit user tap so we don't surprise them with a hot mic
+    /// after they've moved on. Mirrors iOS autoResumeMaxInterruptionDuration.
+    private val autoResumeMaxInterruptionMs = 10_000L
+
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Phone call / Siri / CarPlay nav prompt took over. Mute the mic
+                // (so we stop billing audio tokens for nothing the user can hear),
+                // cancel any in-flight assistant response so we don't replay stale
+                // audio on resume, and time the blip for the auto-resume decision.
+                LogManager.info("AudioFocus transient loss — pausing voice", TAG)
+                interruptionStartedAtMs = System.currentTimeMillis()
+                localAudioTrack?.setEnabled(false)
+                if (isResponseInProgress) sendCancelResponse()
+                emitEvent?.invoke(RealtimeEvent.Status("Voice session interrupted."))
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                // Permanent loss — Google Assistant fully launched, user-initiated
+                // music app, etc. Drop focus and wait for an explicit re-engage.
+                LogManager.info("AudioFocus permanent loss — waiting for tap", TAG)
+                localAudioTrack?.setEnabled(false)
+                if (isResponseInProgress) sendCancelResponse()
+                emitEvent?.invoke(RealtimeEvent.Status("Voice session paused. Tap to resume."))
+                abandonAudioFocus()
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                val elapsed = if (interruptionStartedAtMs > 0L) {
+                    System.currentTimeMillis() - interruptionStartedAtMs
+                } else {
+                    Long.MAX_VALUE
+                }
+                interruptionStartedAtMs = 0L
+                if (elapsed <= autoResumeMaxInterruptionMs) {
+                    LogManager.info("AudioFocus auto-resuming after ${elapsed}ms", TAG)
+                    localAudioTrack?.setEnabled(true)
+                    emitEvent?.invoke(RealtimeEvent.Status("Voice resumed."))
+                } else {
+                    LogManager.info("AudioFocus regained after ${elapsed}ms — waiting for tap", TAG)
+                    emitEvent?.invoke(RealtimeEvent.Status("Voice session paused. Tap to resume."))
+                }
+            }
+        }
+    }
+
+    private fun requestAudioFocus() {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(attrs)
+            .setAcceptsDelayedFocusGain(true)
+            .setOnAudioFocusChangeListener(audioFocusListener)
+            .build()
+        audioFocusRequest = request
+        am.requestAudioFocus(request)
+    }
+
+    private fun abandonAudioFocus() {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+        audioFocusRequest = null
     }
 }
