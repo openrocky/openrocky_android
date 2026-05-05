@@ -146,6 +146,7 @@ fun OpenRockyMainApp(
     val activeSoulId by viewModel.soulStore.activeSoulID.collectAsStateWithLifecycle()
     val memoryEntries by viewModel.memoryService.entries.collectAsStateWithLifecycle()
     val skills by viewModel.customSkillStore.skills.collectAsStateWithLifecycle()
+    val mcpServers by viewModel.toolbox.mcpStore.servers.collectAsStateWithLifecycle()
 
     // Microphone permission launcher for voice sessions
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -298,6 +299,7 @@ fun OpenRockyMainApp(
                     onSoul = { navController.navigate(SoulSettingsRoute) },
                     onSkills = { navController.navigate(SkillsSettingsRoute) },
                     onCustomSkills = { navController.navigate(CustomSkillsListRoute) },
+                    onMCPServers = { navController.navigate(MCPServersListRoute) },
                     onMemory = { navController.navigate(MemorySettingsRoute) },
                     onEmail = { navController.navigate(EmailSettingsRoute) },
                     onFeatures = { navController.navigate(FeaturesSettingsRoute) },
@@ -448,6 +450,31 @@ fun OpenRockyMainApp(
                 CustomSkillEditorView(
                     skill = skill,
                     onSave = { viewModel.customSkillStore.save(it) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<MCPServersListRoute> {
+                com.xnu.rocky.ui.screens.settings.MCPServersListView(
+                    servers = mcpServers,
+                    onToggle = { viewModel.toolbox.mcpStore.toggle(it) },
+                    onEdit = { navController.navigate(MCPServerEditorRoute(serverId = it)) },
+                    onDelete = { viewModel.toolbox.mcpStore.delete(it) },
+                    onAdd = { navController.navigate(MCPServerEditorRoute()) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<MCPServerEditorRoute> { entry ->
+                val route = entry.toRoute<MCPServerEditorRoute>()
+                val existing = route.serverId?.let { id -> mcpServers.find { it.id == id } }
+                com.xnu.rocky.ui.screens.settings.MCPServerEditorView(
+                    existing = existing,
+                    onSave = {
+                        if (existing == null) viewModel.toolbox.mcpStore.add(it)
+                        else viewModel.toolbox.mcpStore.update(it)
+                    },
+                    onCacheTools = { id, tools -> viewModel.toolbox.mcpStore.updateCachedTools(id, tools) },
                     onBack = { navController.popBackStack() }
                 )
             }

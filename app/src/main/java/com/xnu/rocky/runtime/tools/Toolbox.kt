@@ -51,6 +51,12 @@ class Toolbox(
     val timerService = TimerService(context)
     val mediaPlayerService = MediaPlayerService(context)
     private val builtInToolStore = BuiltInToolStore(context)
+    /**
+     * User-configured Model Context Protocol servers. Their tools are surfaced
+     * to the chat sub-agent (and never to the realtime voice tier) under the
+     * `mcp-{label}-{tool}` namespace. Mirrors iOS `OpenRockyMCPStore.shared`.
+     */
+    val mcpStore = MCPStore(context)
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
@@ -82,18 +88,60 @@ class Toolbox(
     )
 
     fun chatToolDefinitions(): List<ToolDefinition> {
-        return allToolDefinitions().filter { builtInToolStore.isEnabled(it.function.name) }
+        // MCP servers expose their tools through the same chat surface so any
+        // configured chat provider (not just OpenAI) can call them. They live
+        // behind delegate-task — voice never sees them directly.
+        return allToolDefinitions().filter { builtInToolStore.isEnabled(it.function.name) } +
+            mcpToolDefinitions()
     }
 
     fun realtimeToolDefinitions(): List<ToolDefinition> {
-        return chatToolDefinitions().filter { realtimeToolWhitelist.contains(it.function.name) }
+        // Intentionally excludes MCP tools: the realtime model degrades past
+        // ~12 tools and MCP catalogs can be large. Heavier MCP work is routed
+        // behind delegate-task on the chat sub-agent, same pattern as iOS.
+        return allToolDefinitions()
+            .filter { builtInToolStore.isEnabled(it.function.name) }
+            .filter { realtimeToolWhitelist.contains(it.function.name) }
     }
 
     fun subagentToolDefinitions(allowedTools: Set<String>? = null): List<ToolDefinition> {
         val enabled = allToolDefinitions().filter { builtInToolStore.isEnabled(it.function.name) }
-        val nonRecursive = enabled.filter { it.function.name != "delegate-task" }
+        val nonRecursive = enabled.filter { it.function.name != "delegate-task" } + mcpToolDefinitions()
         if (allowedTools.isNullOrEmpty()) return nonRecursive
         return nonRecursive.filter { allowedTools.contains(it.function.name) }
+    }
+
+    /**
+     * Project the user's enabled MCP servers' cached tool catalogs onto the
+     * chat-tool surface, namespaced as `mcp-{label}-{tool}` so two servers
+     * can advertise overlapping tool names without colliding. Mirrors iOS
+     * `mcpToolDefinitions()`.
+     *
+     * We emit a stub `parameters` (free-form object) here — the MCP server's
+     * own schema may use JSON Schema features our local model doesn't cover.
+     * The chat model still gets the tool name + description, which is enough
+     * to call most MCP tools correctly.
+     */
+    fun mcpToolDefinitions(): List<ToolDefinition> {
+        val defs = mutableListOf<ToolDefinition>()
+        for (server in mcpStore.servers.value) {
+            if (!server.isEnabled) continue
+            val allowSet = server.allowedToolNames.toSet()
+            for (tool in server.cachedTools) {
+                if (allowSet.isNotEmpty() && tool.name !in allowSet) continue
+                val toolName = MCPServer.sanitizedToolName(server.label, tool.name)
+                val description = "[MCP ${server.label}] ${tool.description}"
+                defs.add(ToolDefinition(function = ToolFunctionDef(
+                    name = toolName,
+                    description = description,
+                    parameters = buildJsonObject {
+                        put("type", JsonPrimitive("object"))
+                        putJsonObject("properties") {}
+                    }
+                )))
+            }
+        }
+        return defs
     }
 
     fun toolDescriptions(): String {
@@ -397,6 +445,14 @@ class Toolbox(
                     if (name.startsWith("skill-")) {
                         val input = args["input"]?.jsonPrimitive?.contentOrNull ?: ""
                         "Skill '$name' activated with input: $input"
+                    } else if (name.startsWith("mcp-")) {
+                        // MCP tools come in as `mcp-{server}-{tool}`. Resolve
+                        // and proxy the call out to the configured server.
+                        // Errors from the server (HTTP, JSON-RPC, or
+                        // tool-reported isError) bubble up via the catch
+                        // below so the caller's failure handling records the
+                        // result accurately.
+                        executeMCPTool(name, argumentsJson)
                     } else {
                         "Tool '$name' is not available on Android"
                     }
@@ -406,6 +462,23 @@ class Toolbox(
             LogManager.error("Tool execution failed: $name - ${e.message}", "Toolbox")
             "Error executing $name: ${e.message}"
         }
+    }
+
+    /**
+     * Forward a namespaced MCP tool call to the matching configured server.
+     * Errors (HTTP, JSON-RPC, or tool-reported isError) are propagated as
+     * exceptions so the toolbox's outer catch records the failure and the
+     * timeline shows the ✗ marker. Mirrors iOS `executeMCPTool`.
+     */
+    private suspend fun executeMCPTool(name: String, argumentsJson: String): String {
+        val resolved = mcpStore.resolveTool(name)
+            ?: throw IllegalArgumentException("Unknown MCP tool: $name")
+        val (server, realToolName) = resolved
+        if (!server.isEnabled) {
+            throw IllegalStateException("MCP server '${server.label}' is disabled")
+        }
+        val client = MCPClient(server)
+        return client.callTool(realToolName, argumentsJson)
     }
 
     private suspend fun executeDelegateTask(args: JsonObject): String {

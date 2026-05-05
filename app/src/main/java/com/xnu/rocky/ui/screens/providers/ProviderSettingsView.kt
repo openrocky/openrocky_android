@@ -38,6 +38,7 @@ fun ProviderSettingsView(
     onSoul: () -> Unit,
     onSkills: () -> Unit,
     onCustomSkills: () -> Unit,
+    onMCPServers: () -> Unit,
     onMemory: () -> Unit,
     onEmail: () -> Unit,
     onFeatures: () -> Unit,
@@ -95,6 +96,9 @@ fun ProviderSettingsView(
             }
             item {
                 SettingsRow(Icons.Default.AutoAwesome, "Skills", "Custom skills", OpenRockyPalette.secondary, onCustomSkills)
+            }
+            item {
+                SettingsRow(Icons.Default.Lan, "MCP Servers", "Model Context Protocol", OpenRockyPalette.secondary, onMCPServers)
             }
             item {
                 SettingsRow(Icons.Default.Memory, "Memory", "Persistent key-value store", OpenRockyPalette.success, onMemory)
