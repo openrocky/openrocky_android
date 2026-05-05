@@ -135,6 +135,7 @@ fun OpenRockyMainApp(
     val session by viewModel.sessionRuntime.session.collectAsStateWithLifecycle()
     val isVoiceActive by viewModel.sessionRuntime.isVoiceActive.collectAsStateWithLifecycle()
     val statusText by viewModel.sessionRuntime.statusText.collectAsStateWithLifecycle()
+    val liveDelegateProgress by viewModel.sessionRuntime.liveDelegateProgress.collectAsStateWithLifecycle()
     val conversations by viewModel.storageProvider.conversations.collectAsStateWithLifecycle()
     val providerInstances by viewModel.providerStore.instances.collectAsStateWithLifecycle()
     val activeProviderId by viewModel.providerStore.activeInstanceID.collectAsStateWithLifecycle()
@@ -243,6 +244,7 @@ fun OpenRockyMainApp(
                     realtimeConfigured = realtimeConfigured,
                     providerLabel = providerLabel,
                     recentMessages = recentMessages,
+                    liveDelegateProgress = liveDelegateProgress,
                     onOpenSettings = { navController.navigate(SettingsRoute) },
                     onOpenChat = { navController.navigate(ChatRoute) },
                     onToggleVoice = {

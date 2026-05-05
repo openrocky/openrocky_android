@@ -51,6 +51,22 @@ class SessionRuntime(
     private val _statusText = MutableStateFlow("")
     val statusText: StateFlow<String> = _statusText.asStateFlow()
 
+    /**
+     * Live snapshot of the in-flight delegate-task. Non-null between
+     * `PlanStarted` and a short delay after `PlanCompleted` so the voice
+     * overlay can show the user which sub-tools are running. Mirrors iOS
+     * `liveDelegateProgress`.
+     */
+    private val _liveDelegateProgress = MutableStateFlow<DelegateProgress?>(null)
+    val liveDelegateProgress: StateFlow<DelegateProgress?> = _liveDelegateProgress.asStateFlow()
+
+    /**
+     * Cancellable timer that clears the progress snapshot a few seconds after
+     * `PlanCompleted`. A new delegate-task that starts before the timer fires
+     * cancels it in `PlanStarted` so the panel jumps straight to the new run.
+     */
+    private var liveProgressClearJob: Job? = null
+
     private var currentConversationId: String? = null
     private val chatHistory = mutableListOf<ChatMessage>()
 
@@ -66,6 +82,13 @@ class SessionRuntime(
         syncSubagentChatConfiguration()
     }
 
+    /**
+     * Updates three things in lockstep: the rolling timeline, the single-line
+     * statusText, and the structured `liveDelegateProgress` snapshot the voice
+     * overlay renders. When a delegate-task fires inside an active voice
+     * session, the inner tool call/result rows are also persisted to the
+     * conversation so the chat detail view shows the full sub-tool tree.
+     */
     private fun handleSubagentEvent(event: SubagentEvent) {
         when (event) {
             is SubagentEvent.PlanStarted -> {
@@ -73,11 +96,24 @@ class SessionRuntime(
                 _statusText.value = "Delegating ${event.subtaskCount} $label..."
                 addTimeline(TimelineKind.TOOL,
                     "Delegated task → ${event.subtaskCount} $label: ${event.taskDescription.take(120)}")
+                liveProgressClearJob?.cancel()
+                liveProgressClearJob = null
+                _liveDelegateProgress.value = DelegateProgress(taskDescription = event.taskDescription)
             }
             is SubagentEvent.SubtaskStarted -> {
                 _statusText.value = "Subtask ${event.subtaskIndex + 1}/${event.totalCount} starting..."
                 addTimeline(TimelineKind.TOOL,
                     "▸ Subtask ${event.subtaskIndex + 1}/${event.totalCount}: ${event.description.take(120)}")
+                mutateProgress { progress ->
+                    val subtask = DelegateProgress.Subtask(
+                        id = event.taskID,
+                        index = event.subtaskIndex,
+                        totalCount = event.totalCount,
+                        description = event.description,
+                        status = DelegateProgress.Subtask.Status.Running
+                    )
+                    progress.copy(subtasks = progress.subtasks + subtask)
+                }
             }
             is SubagentEvent.SubtaskThinking -> {
                 // Activity ping while the chat model writes/reasons before any
@@ -88,12 +124,25 @@ class SessionRuntime(
                 } else {
                     "Agent is thinking (turn ${event.turn + 1})..."
                 }
+                mutateSubtask(event.taskID) { it.copy(status = DelegateProgress.Subtask.Status.Thinking(event.turn)) }
             }
             is SubagentEvent.ToolStarted -> {
                 val prefix = if (event.isSkill) "skill" else "tool"
                 _statusText.value = "Calling $prefix `${event.name}`..."
-                val argsPart = if (event.argsPreview.isEmpty()) "" else " ${event.argsPreview}"
+                val argsPreview = SubagentRuntime.previewArguments(event.arguments)
+                val argsPart = if (argsPreview.isEmpty()) "" else " $argsPreview"
                 addTimeline(TimelineKind.TOOL, "  • [$prefix] ${event.name}$argsPart")
+                mutateSubtask(event.taskID) { subtask ->
+                    val newEvent = DelegateProgress.ToolEvent(
+                        name = event.name,
+                        isSkill = event.isSkill,
+                        argsPreview = argsPreview,
+                        status = DelegateProgress.ToolEvent.Status.Running
+                    )
+                    val combined = (subtask.toolEvents + newEvent)
+                        .takeLast(DelegateProgress.MAX_TOOL_EVENTS_PER_SUBTASK)
+                    subtask.copy(toolEvents = combined)
+                }
             }
             is SubagentEvent.ToolCompleted -> {
                 val prefix = if (event.isSkill) "skill" else "tool"
@@ -101,20 +150,99 @@ class SessionRuntime(
                 val elapsedLabel = String.format(Locale.US, "%.1fs", event.elapsedSeconds)
                 _statusText.value = "$mark $prefix `${event.name}` ($elapsedLabel)"
                 val kind = if (event.succeeded) TimelineKind.TOOL else TimelineKind.SYSTEM
-                addTimeline(kind, "    $mark ${event.name} ($elapsedLabel) → ${event.resultPreview}")
+                val resultPreview = SubagentRuntime.previewResult(event.result)
+                addTimeline(kind, "    $mark ${event.name} ($elapsedLabel) → $resultPreview")
+                mutateSubtask(event.taskID) { subtask ->
+                    val updated = subtask.toolEvents.toMutableList()
+                    val lastIdx = updated.indexOfLast {
+                        it.name == event.name && it.status is DelegateProgress.ToolEvent.Status.Running
+                    }
+                    if (lastIdx >= 0) {
+                        updated[lastIdx] = updated[lastIdx].copy(
+                            status = DelegateProgress.ToolEvent.Status.Completed(event.succeeded),
+                            resultPreview = resultPreview,
+                            elapsedSeconds = event.elapsedSeconds
+                        )
+                    }
+                    subtask.copy(toolEvents = updated)
+                }
+                // Persist the sub-tool call into the chat history when this is
+                // running inside an active voice turn. Without this every MCP /
+                // skill / android-tool the sub-agent invokes is buried in the
+                // delegate-task wrapper's JSON result and invisible in chat
+                // detail. Chat-mode flows already write tool_call / tool_result
+                // rows from the inferenceRuntime callbacks, so we only do this
+                // for voice. Mirrors iOS subagentCompletedToolCalls.
+                if (_isVoiceActive.value) {
+                    val convId = currentConversationId
+                    if (convId != null) {
+                        storageProvider.appendMessage(convId, ConversationMessage(
+                            role = "tool_call",
+                            content = event.arguments,
+                            toolName = event.name
+                        ))
+                        storageProvider.appendMessage(convId, ConversationMessage(
+                            role = "tool_result",
+                            content = event.result,
+                            toolName = event.name
+                        ))
+                    }
+                }
             }
             is SubagentEvent.SubtaskCompleted -> {
                 val mark = if (event.succeeded) "✓" else "✗"
                 val elapsedLabel = String.format(Locale.US, "%.1fs", event.elapsedSeconds)
                 val kind = if (event.succeeded) TimelineKind.RESULT else TimelineKind.SYSTEM
                 addTimeline(kind, "$mark Subtask done ($elapsedLabel): ${event.summary.take(120)}")
+                mutateSubtask(event.taskID) {
+                    it.copy(
+                        status = DelegateProgress.Subtask.Status.Completed,
+                        summary = event.summary,
+                        succeeded = event.succeeded,
+                        elapsedSeconds = event.elapsedSeconds
+                    )
+                }
             }
             is SubagentEvent.PlanCompleted -> {
                 val elapsedLabel = String.format(Locale.US, "%.1fs", event.elapsedSeconds)
                 _statusText.value = "Delegate-task finished (${event.succeededCount}/${event.totalCount}, $elapsedLabel)."
                 addTimeline(TimelineKind.RESULT,
                     "Delegate-task complete: ${event.succeededCount}/${event.totalCount} subtasks succeeded in $elapsedLabel")
+                mutateProgress { progress ->
+                    progress.copy(
+                        finishedAtMs = System.currentTimeMillis(),
+                        planSucceededCount = event.succeededCount,
+                        planTotalCount = event.totalCount
+                    )
+                }
+                scheduleLiveProgressClear(afterMs = 4_000)
             }
+        }
+    }
+
+    private fun mutateProgress(change: (DelegateProgress) -> DelegateProgress) {
+        val current = _liveDelegateProgress.value ?: return
+        _liveDelegateProgress.value = change(current)
+    }
+
+    private fun mutateSubtask(
+        taskID: String,
+        change: (DelegateProgress.Subtask) -> DelegateProgress.Subtask
+    ) {
+        mutateProgress { progress ->
+            val idx = progress.subtasks.indexOfFirst { it.id == taskID }
+            if (idx < 0) return@mutateProgress progress
+            val updated = progress.subtasks.toMutableList()
+            updated[idx] = change(updated[idx])
+            progress.copy(subtasks = updated)
+        }
+    }
+
+    private fun scheduleLiveProgressClear(afterMs: Long) {
+        liveProgressClearJob?.cancel()
+        liveProgressClearJob = scope.launch {
+            delay(afterMs)
+            _liveDelegateProgress.value = null
         }
     }
 

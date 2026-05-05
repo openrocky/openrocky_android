@@ -67,18 +67,28 @@ sealed class SubagentEvent {
      * between SubtaskStarted and the first ToolStarted.
      */
     data class SubtaskThinking(val taskID: String, val turn: Int) : SubagentEvent()
+    /**
+     * `arguments` is the full tool-call argument JSON. Consumers that just
+     * want a one-line preview should call [SubagentRuntime.previewArguments].
+     */
     data class ToolStarted(
         val taskID: String,
         val name: String,
         val isSkill: Boolean,
-        val argsPreview: String
+        val arguments: String
     ) : SubagentEvent()
+    /**
+     * `result` is the full tool output. UI uses [SubagentRuntime.previewResult]
+     * for the inline timeline; persistence stores it raw alongside `arguments`
+     * so the chat tree can render every sub-tool call as its own message.
+     */
     data class ToolCompleted(
         val taskID: String,
         val name: String,
         val isSkill: Boolean,
         val succeeded: Boolean,
-        val resultPreview: String,
+        val arguments: String,
+        val result: String,
         val elapsedSeconds: Double
     ) : SubagentEvent()
     data class SubtaskCompleted(
@@ -273,12 +283,11 @@ class SubagentRuntime(
                 val name = toolCall.function.name
                 if (name.isBlank()) continue
                 val isSkill = name.startsWith("skill-")
-                val argsPreview = previewArguments(toolCall.function.arguments)
                 onEvent?.invoke(SubagentEvent.ToolStarted(
                     taskID = task.id,
                     name = name,
                     isSkill = isSkill,
-                    argsPreview = argsPreview
+                    arguments = toolCall.function.arguments
                 ))
 
                 val toolStart = System.currentTimeMillis()
@@ -298,7 +307,8 @@ class SubagentRuntime(
                     name = name,
                     isSkill = isSkill,
                     succeeded = succeeded,
-                    resultPreview = previewResult(result),
+                    arguments = toolCall.function.arguments,
+                    result = result,
                     elapsedSeconds = toolElapsed
                 ))
 

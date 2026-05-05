@@ -37,6 +37,7 @@ import java.util.Calendar
 import com.xnu.rocky.models.OpenRockySession
 import com.xnu.rocky.models.SessionMode
 import com.xnu.rocky.runtime.ConversationMessage
+import com.xnu.rocky.runtime.DelegateProgress
 import com.xnu.rocky.ui.theme.OpenRockyPalette
 import kotlinx.coroutines.delay
 
@@ -70,6 +71,13 @@ fun VoiceHomeScreen(
     realtimeConfigured: Boolean,
     providerLabel: String,
     recentMessages: List<ConversationMessage>,
+    /**
+     * Live snapshot of the in-flight delegate-task. When non-null the
+     * [DelegateProgressPanel] floats above the orb so the user can see what
+     * the chat sub-agent is actually doing during a 5–30s delegation, instead
+     * of staring at a single status line. Mirrors iOS overlay panel.
+     */
+    liveDelegateProgress: DelegateProgress?,
     onOpenSettings: () -> Unit,
     onOpenChat: () -> Unit,
     onToggleVoice: () -> Unit,
@@ -219,6 +227,19 @@ fun VoiceHomeScreen(
                 }
             }
         }
+
+        // Live delegate-task progress overlay. Floats above the orb so the
+        // user can see what the chat sub-agent is doing during a 5–30s
+        // delegation, instead of staring at a single status line. Animates
+        // in/out via DelegateProgressPanel itself.
+        DelegateProgressPanel(
+            progress = liveDelegateProgress,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 200.dp)
+                .navigationBarsPadding()
+        )
     }
 
     if (showsNotConfiguredAlert) {
