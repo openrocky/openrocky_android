@@ -266,7 +266,17 @@ class SessionRuntime(
                     return@launch
                 }
                 LogManager.info("[VOICE] realtime provider=${config.provider.displayName} model=${config.modelID}", TAG)
-                voiceBridge = RealtimeVoiceBridge(context, config, toolbox, characterStore)
+                // Pull priming items for the active conversation so the model
+                // can continue where the user left off instead of starting blind.
+                // Empty list when there's no current conversation (fresh home
+                // surface) or when the conversation has no eligible text turns.
+                val priming = primingItemsForCurrentConversation()
+                if (priming.isNotEmpty()) {
+                    LogManager.info("[VOICE] priming realtime with ${priming.size} prior turn(s)", TAG)
+                    addTimeline(TimelineKind.SYSTEM,
+                        "Replaying ${priming.size} prior turn(s) into the live runtime.")
+                }
+                voiceBridge = RealtimeVoiceBridge(context, config, toolbox, characterStore, priming)
                 voiceBridge?.start()?.collect { event ->
                     handleVoiceEvent(event)
                 }
@@ -288,6 +298,17 @@ class SessionRuntime(
         _statusText.value = ""
         updateSession { it.copy(mode = SessionMode.READY) }
         VoiceForegroundService.stop(context)
+    }
+
+    /**
+     * Build the priming list for the active conversation. Returns an empty list
+     * when there's no `currentConversationId` yet (fresh voice surface) or when
+     * the saved conversation has no eligible user/assistant text turns.
+     */
+    private fun primingItemsForCurrentConversation(): List<com.xnu.rocky.runtime.voice.VoicePrimingItem> {
+        val convId = currentConversationId ?: return emptyList()
+        val messages = storageProvider.loadMessages(convId)
+        return com.xnu.rocky.runtime.voice.VoicePriming.items(messages)
     }
 
     fun newConversation(): String {

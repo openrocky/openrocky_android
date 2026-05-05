@@ -24,7 +24,15 @@ class RealtimeVoiceBridge(
     private val context: Context,
     private val config: RealtimeProviderConfiguration,
     private val toolbox: Toolbox,
-    private val characterStore: CharacterStore
+    private val characterStore: CharacterStore,
+    /**
+     * Optional replay-into-the-realtime-session items. Captured at bridge
+     * construction so reconnect-on-drop pushes the same priming forward and a
+     * Wi-Fi blip mid-conversation doesn't reset the model's view of what the
+     * user already said. Empty list means a fresh session. Mirrors iOS
+     * `lastPrimingItems`.
+     */
+    private val primingItems: List<VoicePrimingItem> = emptyList()
 ) {
     companion object {
         private const val TAG = "VoiceBridge"
@@ -41,7 +49,9 @@ class RealtimeVoiceBridge(
     private var client: RealtimeVoiceClient? = null
 
     private fun makeClient(): RealtimeVoiceClient = when (config.provider) {
-        RealtimeProviderKind.OPENAI -> OpenAIRealtimeVoiceClient(config, toolbox, characterStore, context)
+        RealtimeProviderKind.OPENAI -> OpenAIRealtimeVoiceClient(
+            config, toolbox, characterStore, context, primingItems
+        )
     }
 
     /**

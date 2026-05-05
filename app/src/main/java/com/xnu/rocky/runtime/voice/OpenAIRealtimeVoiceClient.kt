@@ -33,12 +33,26 @@ class OpenAIRealtimeVoiceClient(
     private val config: RealtimeProviderConfiguration,
     private val toolbox: Toolbox,
     private val characterStore: CharacterStore,
-    private val context: Context
+    private val context: Context,
+    /**
+     * Pre-existing turns replayed into the session right after `session.updated`,
+     * so the model can pick up an in-progress conversation. Empty for fresh
+     * conversations. Mirrors iOS `primingItems`.
+     */
+    private val primingItems: List<VoicePrimingItem> = emptyList()
 ) : RealtimeVoiceClient {
 
     companion object {
         private const val TAG = "OpenAIWebRTC"
     }
+
+    /**
+     * One-shot guard so priming items aren't re-pushed if `session.updated`
+     * fires more than once during the same client session. (Reconnects build
+     * a new client and reset this naturally.)
+     */
+    @Volatile
+    private var hasReplayedPriming: Boolean = false
 
     private var peerConnection: PeerConnection? = null
     private var dataChannel: DataChannel? = null
@@ -345,6 +359,15 @@ class OpenAIRealtimeVoiceClient(
                             needsMicSuspension = false
                         )
                     ))
+                    // Replay prior turns so the model can continue the
+                    // conversation. We don't fire response.create — the model
+                    // waits for the user's next utterance, which then has the
+                    // history as context. Server VAD / semantic VAD do the
+                    // right thing here. Mirrors iOS replay branch.
+                    if (type == "session.updated" && !hasReplayedPriming && primingItems.isNotEmpty()) {
+                        hasReplayedPriming = true
+                        replayPrimingItems()
+                    }
                 }
                 "input_audio_buffer.speech_started" -> {
                     // Server-VAD path only: when the server detects speech mid-response
@@ -512,6 +535,39 @@ class OpenAIRealtimeVoiceClient(
         sendDataChannelMessage(msg.toString())
         val respond = buildJsonObject { put("type", JsonPrimitive("response.create")) }
         sendDataChannelMessage(respond.toString())
+    }
+
+    /**
+     * Push each priming turn as a `conversation.item.create` so the realtime
+     * model sees the prior conversation as context. We deliberately don't
+     * fire `response.create` — there's no user utterance yet, and we want the
+     * model to wait for the user instead of replying to history.
+     *
+     * Content type is `input_text` for user turns and `text` for assistant
+     * turns, matching the OpenAI Realtime conversation-item content schema.
+     */
+    private fun replayPrimingItems() {
+        LogManager.info("[VOICE] priming with ${primingItems.size} prior turn(s)", TAG)
+        for (item in primingItems) {
+            val contentType = when (item.role) {
+                VoicePrimingItem.Role.USER -> "input_text"
+                VoicePrimingItem.Role.ASSISTANT -> "text"
+            }
+            val msg = buildJsonObject {
+                put("type", JsonPrimitive("conversation.item.create"))
+                putJsonObject("item") {
+                    put("type", JsonPrimitive("message"))
+                    put("role", JsonPrimitive(item.role.wireValue))
+                    putJsonArray("content") {
+                        addJsonObject {
+                            put("type", JsonPrimitive(contentType))
+                            put("text", JsonPrimitive(item.text))
+                        }
+                    }
+                }
+            }
+            sendDataChannelMessage(msg.toString())
+        }
     }
 
     override suspend fun sendAudioChunk(data: ByteArray) {
