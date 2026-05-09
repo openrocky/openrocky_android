@@ -157,7 +157,7 @@ fun RealtimeProviderInstanceEditorView(
                     onRun = {
                         testState = TestState.Testing
                         scope.launch {
-                            val testModel = "gpt-realtime-mini"
+                            val testModel = "gpt-realtime-2"
                             val result = runTestConnection(credential.trim(), customHost.trim(), testModel)
                             testState = result
                         }
@@ -372,6 +372,10 @@ private fun AdvancedSettingsSection(
                     selected = settings.realtimeModel,
                     onSelect = { onChange(settings.copy(realtimeModel = it)) }
                 )
+                ReasoningEffortRow(
+                    selected = settings.reasoningEffort,
+                    onSelect = { onChange(settings.copy(reasoningEffort = it)) }
+                )
                 ChoiceRow(
                     label = "Transcription Model",
                     options = RealtimeAdvancedSettings.transcriptionModelOptions,
@@ -393,13 +397,6 @@ private fun AdvancedSettingsSection(
                     onChange = { onChange(settings.copy(turnDetection = it)) }
                 )
 
-                SliderField(
-                    label = "Temperature",
-                    value = settings.temperature.toFloat(),
-                    range = 0f..1.5f,
-                    valueLabel = "%.2f".format(settings.temperature),
-                    onChange = { onChange(settings.copy(temperature = it.toDouble())) }
-                )
                 SliderField(
                     label = "Max Output Tokens",
                     value = settings.maxOutputTokens.toFloat(),
@@ -502,6 +499,27 @@ private fun TurnDetectionEditor(value: TurnDetection, onChange: (TurnDetection) 
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ReasoningEffortRow(selected: ReasoningEffort, onSelect: (ReasoningEffort) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FieldLabel("Reasoning Effort")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReasoningEffort.entries.forEach { effort ->
+                FilterChip(
+                    selected = selected == effort,
+                    onClick = { onSelect(effort) },
+                    label = { Text(effort.displayName, fontSize = 12.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = OpenRockyPalette.accent.copy(alpha = 0.2f),
+                        containerColor = OpenRockyPalette.cardElevated
+                    )
+                )
+            }
+        }
+        Text(selected.summary, fontSize = 11.sp, color = OpenRockyPalette.muted)
     }
 }
 
@@ -609,10 +627,12 @@ private suspend fun runTestConnection(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
+    // GA-only models like `gpt-realtime-2` reject the legacy
+    // `OpenAI-Beta: realtime=v1` header ("Model is only available on the GA
+    // API"). Just send the bearer.
     val request = Request.Builder()
         .url(url.replace("ws://", "http://").replace("wss://", "https://"))
         .header("Authorization", "Bearer $credential")
-        .header("OpenAI-Beta", "realtime=v1")
         .build()
     val outcome = kotlin.runCatching {
         withTimeout(10_000) {

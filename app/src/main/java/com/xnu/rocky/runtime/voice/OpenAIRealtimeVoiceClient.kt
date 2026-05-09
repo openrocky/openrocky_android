@@ -451,38 +451,65 @@ class OpenAIRealtimeVoiceClient(
         val toolDefs = toolbox.realtimeToolDefinitions()
         val advanced = config.advancedSettings
 
+        // GA session schema. Pre-GA flat fields (`input_audio_format`,
+        // `output_audio_format`, `modalities`, `voice`, `speed`,
+        // `turn_detection`, `input_audio_transcription`,
+        // `max_response_output_tokens`, `temperature`) are gone — everything
+        // audio-related lives under `audio.input` / `audio.output`,
+        // `modalities` is `output_modalities` (mutually exclusive: `["audio"]`
+        // OR `["text"]`), and randomness is now controlled via
+        // `reasoning.effort` instead of `temperature`.
         val sessionConfig = buildJsonObject {
             put("type", JsonPrimitive("session.update"))
             putJsonObject("session") {
+                put("type", JsonPrimitive("realtime"))
                 put("instructions", JsonPrimitive(systemPrompt))
-                put("voice", JsonPrimitive(config.openaiVoice))
-                putJsonArray("modalities") {
-                    add(JsonPrimitive("text"))
-                    if (!advanced.allowTextOnly) add(JsonPrimitive("audio"))
+                // GA: output_modalities is mutually exclusive — pick one.
+                // `audio` already includes transcript events on the data
+                // channel, so we don't also list `text`.
+                putJsonArray("output_modalities") {
+                    add(JsonPrimitive(if (advanced.allowTextOnly) "text" else "audio"))
                 }
-                putJsonObject("input_audio_transcription") {
-                    put("model", JsonPrimitive(advanced.transcriptionModel))
-                    advanced.inputLanguage?.takeIf { it.isNotBlank() }?.let {
-                        put("language", JsonPrimitive(it))
+                putJsonObject("audio") {
+                    putJsonObject("input") {
+                        putJsonObject("format") {
+                            put("type", JsonPrimitive("audio/pcm"))
+                            put("rate", JsonPrimitive(24_000))
+                        }
+                        putJsonObject("transcription") {
+                            put("model", JsonPrimitive(advanced.transcriptionModel))
+                            advanced.inputLanguage?.takeIf { it.isNotBlank() }?.let {
+                                put("language", JsonPrimitive(it))
+                            }
+                        }
+                        putJsonObject("turn_detection") {
+                            when (val td = advanced.turnDetection) {
+                                is TurnDetection.Semantic -> {
+                                    put("type", JsonPrimitive("semantic_vad"))
+                                    put("eagerness", JsonPrimitive(td.eagerness))
+                                }
+                                is TurnDetection.Server -> {
+                                    put("type", JsonPrimitive("server_vad"))
+                                    put("threshold", JsonPrimitive(td.threshold))
+                                    put("prefix_padding_ms", JsonPrimitive(td.prefixPaddingMs))
+                                    put("silence_duration_ms", JsonPrimitive(td.silenceDurationMs))
+                                }
+                            }
+                        }
+                    }
+                    putJsonObject("output") {
+                        putJsonObject("format") {
+                            put("type", JsonPrimitive("audio/pcm"))
+                            put("rate", JsonPrimitive(24_000))
+                        }
+                        put("voice", JsonPrimitive(config.openaiVoice))
+                        put("speed", JsonPrimitive(advanced.speed))
                     }
                 }
-                putJsonObject("turn_detection") {
-                    when (val td = advanced.turnDetection) {
-                        is TurnDetection.Semantic -> {
-                            put("type", JsonPrimitive("semantic_vad"))
-                            put("eagerness", JsonPrimitive(td.eagerness))
-                        }
-                        is TurnDetection.Server -> {
-                            put("type", JsonPrimitive("server_vad"))
-                            put("threshold", JsonPrimitive(td.threshold))
-                            put("prefix_padding_ms", JsonPrimitive(td.prefixPaddingMs))
-                            put("silence_duration_ms", JsonPrimitive(td.silenceDurationMs))
-                        }
-                    }
+                put("max_output_tokens", JsonPrimitive(advanced.maxOutputTokens))
+                putJsonObject("reasoning") {
+                    put("effort", JsonPrimitive(advanced.reasoningEffort.wireValue))
                 }
-                put("temperature", JsonPrimitive(advanced.temperature))
-                put("max_response_output_tokens", JsonPrimitive(advanced.maxOutputTokens))
-                put("speed", JsonPrimitive(advanced.speed))
                 if (toolDefs.isNotEmpty()) {
                     putJsonArray("tools") {
                         for (tool in toolDefs) {
@@ -494,6 +521,7 @@ class OpenAIRealtimeVoiceClient(
                             }
                         }
                     }
+                    put("tool_choice", JsonPrimitive("auto"))
                 }
             }
         }
