@@ -44,14 +44,43 @@ class RealtimeVoiceBridge(
          * Mirrors iOS reconnectBackoffSeconds.
          */
         private val RECONNECT_BACKOFF_MS = listOf(1_000L, 3_000L, 9_000L)
+
+        /**
+         * Hard cap on transcript turns kept for reconnect-replay. A marathon
+         * session shouldn't grow unbounded — VoicePriming.capped() then trims
+         * the combined list to its own budget before the new session sees it.
+         * Mirrors iOS inSessionTurnsHardCap.
+         */
+        private const val IN_SESSION_TURNS_HARD_CAP = 100
     }
 
     private var client: RealtimeVoiceClient? = null
 
-    private fun makeClient(): RealtimeVoiceClient = when (config.provider) {
-        RealtimeProviderKind.OPENAI -> OpenAIRealtimeVoiceClient(
-            config, toolbox, characterStore, context, primingItems
-        )
+    /**
+     * Final-transcript turns observed since this session started. Combined with
+     * [primingItems] on reconnect so the new session sees both the pre-session
+     * context AND whatever was said after — otherwise reconnect "forgets" the
+     * live conversation. Reset after a successful reconnect, since the new
+     * session has freshly replayed them. Mirrors iOS `inSessionTurns`.
+     */
+    private val inSessionTurns: MutableList<VoicePrimingItem> = mutableListOf()
+
+    private fun makeClient(replayItems: List<VoicePrimingItem>): RealtimeVoiceClient =
+        when (config.provider) {
+            RealtimeProviderKind.OPENAI -> OpenAIRealtimeVoiceClient(
+                config, toolbox, characterStore, context, replayItems
+            )
+        }
+
+    private fun appendInSessionTurn(role: VoicePrimingItem.Role, text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        inSessionTurns.add(VoicePrimingItem(role, trimmed))
+        if (inSessionTurns.size > IN_SESSION_TURNS_HARD_CAP) {
+            // Drop the oldest overflow; the priming budget further trims later.
+            val overflow = inSessionTurns.size - IN_SESSION_TURNS_HARD_CAP
+            repeat(overflow) { inSessionTurns.removeAt(0) }
+        }
     }
 
     /**
@@ -64,10 +93,15 @@ class RealtimeVoiceBridge(
      */
     fun start(): Flow<RealtimeEvent> = channelFlow {
         var attempts = 0
+        // Per-attempt replay window: initial priming on the first pass, then
+        // (priming + accumulated in-session turns) on each reconnect. Trimmed
+        // back to budget so a long live conversation doesn't balloon the replay.
+        var replayWindow: List<VoicePrimingItem> = VoicePriming.capped(primingItems)
         while (true) {
-            val voiceClient = makeClient()
+            val voiceClient = makeClient(replayWindow)
             client = voiceClient
             var dropped = false
+            var lastError: String? = null
             try {
                 voiceClient.connect().collect { event ->
                     when (event) {
@@ -76,12 +110,24 @@ class RealtimeVoiceBridge(
                             // The collect() call will return shortly; we'll fall
                             // through to the reconnect decision below.
                             dropped = true
+                            lastError = event.lastError
                         }
                         is RealtimeEvent.SessionReady -> {
                             // A successful (re)connect resets the backoff so a
                             // user with a flaky connection still gets the full
-                            // budget on the next drop.
+                            // budget on the next drop. The new session has
+                            // replayed every captured turn, so the in-session
+                            // log starts clean for the next drop.
                             attempts = 0
+                            inSessionTurns.clear()
+                            send(event)
+                        }
+                        is RealtimeEvent.UserTranscriptFinal -> {
+                            appendInSessionTurn(VoicePrimingItem.Role.USER, event.text)
+                            send(event)
+                        }
+                        is RealtimeEvent.AssistantTranscriptFinal -> {
+                            appendInSessionTurn(VoicePrimingItem.Role.ASSISTANT, event.text)
                             send(event)
                         }
                         is RealtimeEvent.ToolCallRequested -> {
@@ -102,10 +148,23 @@ class RealtimeVoiceBridge(
             } catch (e: Exception) {
                 LogManager.error("Voice client error: ${e.message}", TAG)
                 dropped = true
+                lastError = e.message
             }
 
             client = null
             if (!dropped) break // clean termination, nothing to reconnect to
+
+            // Skip the backoff loop for unrecoverable errors — retrying a 401
+            // three times only produces three 401s, and meanwhile the user is
+            // staring at "reconnecting...". Surface a one-line hint instead.
+            val unrecoverable = lastError?.let { VoiceErrorTriage.isUnrecoverable(it) } == true
+            if (unrecoverable) {
+                LogManager.warning("Voice drop is unrecoverable — skipping retry: $lastError", TAG)
+                val hint = lastError?.let { VoiceErrorTriage.hint(it) }
+                    ?: "Voice session disconnected. Tap to reconnect."
+                send(RealtimeEvent.Status(hint))
+                break
+            }
 
             if (attempts >= RECONNECT_BACKOFF_MS.size) {
                 send(RealtimeEvent.Status("Voice session disconnected. Tap to reconnect."))
@@ -116,6 +175,10 @@ class RealtimeVoiceBridge(
             delay(RECONNECT_BACKOFF_MS[attempts])
             attempts++
             send(RealtimeEvent.Status("Reconnecting (attempt $attempts/${RECONNECT_BACKOFF_MS.size})..."))
+
+            // Combine pre-session priming with anything captured during the
+            // live session; trim back to budget so the replay stays small.
+            replayWindow = VoicePriming.capped(primingItems + inSessionTurns)
         }
     }
 

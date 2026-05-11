@@ -18,6 +18,36 @@ package com.xnu.rocky.runtime.voice
  * every casing the upstream uses. Mirrors iOS OpenRockyVoiceErrorTriage.
  */
 object VoiceErrorTriage {
+    /** True when the error is something a reconnect-with-backoff can never fix
+     *  (bad key, no quota, wrong model). The bridge should bail out of the
+     *  retry loop and surface a hint via [hint] instead of burning three
+     *  attempts on guaranteed failures. */
+    fun isUnrecoverable(raw: String): Boolean {
+        val needle = raw.lowercase()
+        // Auth — the key won't get more valid by retrying.
+        if (needle.contains("incorrect_api_key") ||
+            needle.contains("invalid_api_key") ||
+            needle.contains("401") ||
+            needle.contains("403") ||
+            needle.contains("unauthorized") ||
+            needle.contains("forbidden")
+        ) {
+            return true
+        }
+        // Billing — same story.
+        if (needle.contains("insufficient_quota") || needle.contains("billing")) {
+            return true
+        }
+        // Model gating — picking a model the account can't see won't change in 9s.
+        if (needle.contains("model_not_found") ||
+            needle.contains("does not exist") ||
+            needle.contains("does not have access")
+        ) {
+            return true
+        }
+        return false
+    }
+
     fun hint(raw: String): String? {
         val needle = raw.lowercase()
 

@@ -83,6 +83,15 @@ class OpenAIRealtimeVoiceClient(
     @Volatile
     private var isManualDisconnect: Boolean = false
 
+    /**
+     * Most recent server-side error text, captured from `error` events so we
+     * can attach it to the eventual `Disconnected` emission. The bridge reads
+     * it to skip the retry loop on unrecoverable failures (auth / quota /
+     * model). Mirrors iOS lastErrorText.
+     */
+    @Volatile
+    private var lastErrorText: String? = null
+
     /** Tracked from `response.output_item.added`. Truncate frames must reference it. */
     @Volatile
     private var currentAssistantItemId: String? = null
@@ -170,7 +179,7 @@ class OpenAIRealtimeVoiceClient(
                         // can rebuild, then close the channel so cleanupWebRTC()
                         // disposes this dead PC before the new client comes up.
                         if (!isManualDisconnect) {
-                            emitEvent?.invoke(RealtimeEvent.Disconnected)
+                            emitEvent?.invoke(RealtimeEvent.Disconnected(lastErrorText))
                         }
                         closeChannel?.invoke()
                     }
@@ -227,7 +236,7 @@ class OpenAIRealtimeVoiceClient(
                         // If it closes without a manual stop, treat it the same
                         // as an ICE drop so the bridge can attempt reconnect.
                         if (!isManualDisconnect) {
-                            emitEvent?.invoke(RealtimeEvent.Disconnected)
+                            emitEvent?.invoke(RealtimeEvent.Disconnected(lastErrorText))
                         }
                         closeChannel?.invoke()
                     }
@@ -298,7 +307,16 @@ class OpenAIRealtimeVoiceClient(
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: java.io.IOException) {
-                emitEvent?.invoke(RealtimeEvent.Error("SDP exchange failed: ${e.message}"))
+                val msg = "SDP exchange failed: ${e.message}"
+                lastErrorText = msg
+                emitEvent?.invoke(RealtimeEvent.Error(msg))
+                // No PC connection will form — short-circuit the flow so the
+                // bridge sees Disconnected (carrying the error for triage)
+                // instead of sitting in collect() forever.
+                if (!isManualDisconnect) {
+                    emitEvent?.invoke(RealtimeEvent.Disconnected(msg))
+                }
+                closeChannel?.invoke()
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -321,7 +339,15 @@ class OpenAIRealtimeVoiceClient(
                             actionHint = VoiceErrorAction.ReconfigureProvider
                         )
                     }
+                    lastErrorText = detail.message
                     emitEvent?.invoke(RealtimeEvent.ErrorDetailed(detail))
+                    // SDP rejected — PC will never connect. Emit Disconnected
+                    // (with the auth/quota/model text) so the bridge can
+                    // classify and skip retry for unrecoverable failures.
+                    if (!isManualDisconnect) {
+                        emitEvent?.invoke(RealtimeEvent.Disconnected(detail.message))
+                    }
+                    closeChannel?.invoke()
                     return
                 }
 
@@ -418,15 +444,20 @@ class OpenAIRealtimeVoiceClient(
                     val transcript = event["transcript"]?.jsonPrimitive?.contentOrNull ?: ""
                     emitEvent?.invoke(RealtimeEvent.UserTranscriptFinal(transcript))
                 }
-                "response.audio_transcript.delta" -> {
+                // GA: transcript stream renamed from `response.audio_transcript.*`
+                // to `response.output_audio_transcript.*`.
+                "response.output_audio_transcript.delta" -> {
                     val delta = event["delta"]?.jsonPrimitive?.contentOrNull ?: ""
                     emitEvent?.invoke(RealtimeEvent.AssistantTranscriptDelta(delta))
                 }
-                "response.audio_transcript.done" -> {
+                "response.output_audio_transcript.done" -> {
                     val transcript = event["transcript"]?.jsonPrimitive?.contentOrNull ?: ""
                     emitEvent?.invoke(RealtimeEvent.AssistantTranscriptFinal(transcript))
                 }
-                "response.audio.done" -> {
+                // GA: audio events renamed with the `output_` prefix. Audio frames
+                // themselves arrive over WebRTC's RTP track (not the data channel),
+                // so we only care about the `.done` lifecycle here.
+                "response.output_audio.done" -> {
                     emitEvent?.invoke(RealtimeEvent.AssistantAudioDone)
                 }
                 "response.function_call_arguments.done" -> {
@@ -435,9 +466,27 @@ class OpenAIRealtimeVoiceClient(
                     val callId = event["call_id"]?.jsonPrimitive?.contentOrNull ?: ""
                     emitEvent?.invoke(RealtimeEvent.ToolCallRequested(name, arguments, callId))
                 }
+                // Informational events the bridge doesn't act on; consume silently
+                // so they don't show up as "unhandled" warnings. The bridge already
+                // tracks streamed items via response.output_item.added and reacts
+                // to response.done / transcript lifecycles.
+                //
+                // - input_audio_buffer.speech_stopped / .committed — VAD lifecycle.
+                // - response.function_call_arguments.delta — we only need `.done`.
+                // - rate_limits.updated — quota telemetry.
+                // - conversation.item.added / .done — GA conversation lifecycle.
+                "input_audio_buffer.speech_stopped",
+                "input_audio_buffer.committed",
+                "response.function_call_arguments.delta",
+                "rate_limits.updated",
+                "conversation.item.added",
+                "conversation.item.done" -> {
+                    // intentionally consumed
+                }
                 "error" -> {
                     val error = event["error"]?.jsonObject
                     val message = error?.get("message")?.jsonPrimitive?.contentOrNull ?: "Unknown error"
+                    lastErrorText = message
                     emitEvent?.invoke(RealtimeEvent.Error(message))
                 }
             }

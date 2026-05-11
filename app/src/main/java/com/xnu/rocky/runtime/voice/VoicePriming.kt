@@ -57,10 +57,19 @@ object VoicePriming {
             val text = message.content.trim()
             if (text.isEmpty()) null else VoicePrimingItem(role, text)
         }
-        if (candidates.isEmpty()) return emptyList()
+        return capped(candidates)
+    }
+
+    /**
+     * Apply the same count/character budgets to a pre-built item list. Used on
+     * reconnect to compress (initial priming + in-session turns) back into the
+     * budget — without it a long live conversation would balloon the replay.
+     */
+    fun capped(items: List<VoicePrimingItem>): List<VoicePrimingItem> {
+        if (items.isEmpty()) return emptyList()
 
         // Keep the tail (most-recent), preserving chronological order.
-        val tail = candidates.takeLast(MAX_ITEM_COUNT)
+        val tail = items.takeLast(MAX_ITEM_COUNT)
 
         // Walk newest → oldest accumulating into the budget; reverse at the
         // end so the final list stays oldest → newest.

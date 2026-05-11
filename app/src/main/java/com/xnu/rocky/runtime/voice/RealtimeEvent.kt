@@ -39,8 +39,12 @@ sealed class RealtimeEvent {
 
     /** The transport closed without a manual stop. Emitted exactly once per drop;
      *  the bridge uses this to drive reconnect-with-backoff so a transient
-     *  Wi-Fi → cell handoff doesn't strand the user with a dead session. */
-    data object Disconnected : RealtimeEvent()
+     *  Wi-Fi → cell handoff doesn't strand the user with a dead session.
+     *  [lastError] carries the most recent server-side error message (if any) —
+     *  the bridge classifies it via [VoiceErrorTriage] and bails out of the
+     *  retry loop for unrecoverable failures like auth / quota / model-not-found,
+     *  which retrying can't fix. */
+    data class Disconnected(val lastError: String? = null) : RealtimeEvent()
 }
 
 /** Lifecycle classification of a voice-session error. Drives UI affordances:
